@@ -52,10 +52,7 @@ SEMINAR_SLOT_DISPLAY = [
 
 
 def next_seminar_date():
-    dates = [
-        datetime.date(FIRST_SEMINAR_DATE.year, *(int(x) for x in key.split("/")))
-        for key, _ in SEMINAR_SLOT_DISPLAY
-    ]
+    dates = [datetime.date.fromisoformat(key) for key, _ in SEMINAR_SLOT_DISPLAY]
     today = datetime.date.today()
     upcoming = sorted(d for d in dates if d >= today)
     return upcoming[0] if upcoming else max(dates)
