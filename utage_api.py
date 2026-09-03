@@ -66,6 +66,11 @@ def utage_get(key, path, params=None, retries=5, backoff=5):
 
 
 def fetch_line_friends(key, account_id):
+    """LINEアカウントの友だち一覧を全件取得する。
+    LP登録者(subscribers)とセミナー申込者(event applicants)はID体系が異なり直接は結合できない
+    (subscriber.id と applicant.line_friend.id は1件も重ならないことを実測で確認済み)。
+    友だちの picture_url を仲介にすることで
+    「LP登録者 → LINE友だち → セミナー申込者」を厳密なID一致で繋げる(2026-08-30)。"""
     friends = []
     page = 1
     while True:
@@ -80,6 +85,11 @@ def fetch_line_friends(key, account_id):
 
 
 def fetch_lp_registrants(key, funnel_id, page_ids):
+    """指定LPページ群の登録者を全件返す。subscribers APIは page_id 指定で叩くため、
+    どのLPから登録したか(=広告LPか通常LPか)はページID単位で確実に分かる。
+    utm_* も入っているが、広告経由かどうかの判定にUTMは使わない
+    (QRコードを別端末で読む等でUTMは正常な登録でも6%程度欠落するため、
+     ページIDで数えるのが正しい。2026-08-30にユーザーと合意)。"""
     registrants = []
     for pid in page_ids:
         page = 1
@@ -111,6 +121,11 @@ def fetch_seminar_applicants(key, event_project_id):
 
 
 def build_attribution_index(key):
+    """流入元判定用の対応表を作る。
+    attr は "organic"(通常LP=セミナーLP) / "ad"(広告LP)。
+    同一人物が両方のLPに登録していた場合は先に登録した方を採用する。
+    friend_id で引けなかった場合(LINEアイコン未設定・変更後など)に備えて
+    表示名の対応表も併せて返し、フォールバックに使う。"""
     org_subs = fetch_lp_registrants(key, LP_FUNNEL, LP_PAGE_SEMINAR_IDS)
     ad_subs = fetch_lp_registrants(key, LP_FUNNEL, LP_PAGE_AD_IDS)
 
@@ -148,6 +163,15 @@ def build_attribution_index(key):
 
 
 def fetch_seminar_stats(key, event_project_id, target_date):
+    """セミナーの申込・キャンセル・実予約・参加を経路別に集計する。
+    数え方(2026-08-30に全面見直し。広告会社へのCV実測の要請がきっかけ。★崩さないこと★):
+    1. 1人1件に名寄せする。UTAGEは日程変更のたびに「旧日程=cancel_changed」と
+       「新日程=reserved」の2レコードを残すため、そのまま数えると二重計上になる。
+       メールアドレス単位でまとめ、申込日は最も古いレコードの created_at を採用する。
+    2. 有効な予約が1件も残っていない人だけを「キャンセル」とする。
+       日程変更しただけの人はキャンセルに数えない。
+    3. 累計は target_date までに申し込んだ人だけを数える。これを忘れると
+       過去日を再実行したとき全列が現在値で塗り潰される。"""
     applicants = fetch_seminar_applicants(key, event_project_id)
     cache = load_applicant_attributions_cache()
     uncached = [a for a in applicants if a.get("id") and a["id"] not in cache]

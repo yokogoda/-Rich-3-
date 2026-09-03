@@ -129,6 +129,11 @@ def write_date(ws, m, target_date, stats=None):
 
 
 def write_summary(ws, m, target_date, stats=None):
+    """期間累計サマリー(行5〜7)を更新する。列は行5のグループ名+行6の指標名で探す。
+    ★このシートは列の挿入が絶対NG★ サマリー行はデータ行と列を共有しているため、
+    列を挿入すると行9以降の日付列が全部ずれる。
+    またI5:W7には結合セルがあり、結合の先頭以外のセルへの書き込みは無音で無視される。
+    指標を足すときは結合の外側=X列以降に「行5=グループ名 / 行6=指標名」を置くこと。"""
     row5 = with_retry(lambda: ws.row_values(5))
     row6 = with_retry(lambda: ws.row_values(6))
 
