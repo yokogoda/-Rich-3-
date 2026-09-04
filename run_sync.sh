@@ -25,7 +25,7 @@ caffeinate -i bash -c '
 
   MAX_RETRIES=5
   RETRY_COUNT=0
-  until "$HOME/.local/bin/uv" run --with gspread --with requests "$HOME/.config/utage-pdca/sync_daily.py" "$@"; do
+  until python3 "$HOME/.config/utage-pdca/sync_daily.py" "$@"; do
     RETRY_COUNT=$((RETRY_COUNT + 1))
     if [ $RETRY_COUNT -ge $MAX_RETRIES ]; then
       echo "[ERROR] 自動実行が上限リトライ回数 (${MAX_RETRIES}回) に達したため終了します。"
