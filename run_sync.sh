@@ -1,5 +1,7 @@
 #!/bin/bash
-export PATH="$HOME/.local/bin:$PATH"
+export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin:$HOME/.local/bin:$PATH"
+export LANG="ja_JP.UTF-8"
+export LC_ALL="ja_JP.UTF-8"
 mkdir -p "$HOME/.config/utage-pdca/logs"
 
 # 昨日の日付 (YYYY-MM-DD)
