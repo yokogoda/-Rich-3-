@@ -7,6 +7,10 @@ Chatwork 毎週月曜日 配信スケジュール自動報告スクリプト (�
 import os, sys, csv, io, urllib.request, urllib.parse, datetime, ssl
 
 CONFIG_DIR = os.path.expanduser("~/.config/utage-pdca")
+user_site = os.path.expanduser("~/Library/Python/3.9/lib/python/site-packages")
+if user_site not in sys.path and os.path.exists(user_site):
+    sys.path.insert(0, user_site)
+
 CHATWORK_TOKEN_PATH = os.path.join(CONFIG_DIR, "chatwork_api_token.txt")
 CHATWORK_ROOM_ID_PATH = os.path.join(CONFIG_DIR, "chatwork_room_id.txt")
 PRIVATE_CHATWORK_ROOM_ID_PATH = os.path.join(CONFIG_DIR, "private_chatwork_room_id.txt")
@@ -33,16 +37,28 @@ def build_message():
     msg += f"📱 今週の配信スケジュール（{monday_str}〜{sunday_str}）\n"
     msg += "━━━━━━━━━━\n\n"
 
-    ssl_ctx = ssl._create_unverified_context()
-    req = urllib.request.Request(CSV_EXPORT_URL)
     rows = []
-    try:
-        with urllib.request.urlopen(req, timeout=15, context=ssl_ctx) as resp:
-            content = resp.read().decode('utf-8')
-            reader = csv.DictReader(io.StringIO(content))
-            rows = list(reader)
-    except Exception as e:
-        print(f"  [warn] スプレッドシートの読み込みエラー: {e}")
+    sa_path = os.path.expanduser("~/.config/mcp-google-sheets/service-account.json")
+    if os.path.exists(sa_path):
+        try:
+            import gspread
+            gc = gspread.service_account(filename=sa_path)
+            sh = gc.open_by_key("12zT7vCUqcAZ0YexlnCt2U3BWeT0YbYMW1DPjtgT54WQ")
+            ws = sh.worksheet("配信スケジュール管理")
+            rows = ws.get_all_records()
+        except Exception as e:
+            print(f"  [warn] gspreadでのスプレッドシート読み込み失敗: {e}")
+
+    if not rows:
+        ssl_ctx = ssl._create_unverified_context()
+        req = urllib.request.Request(CSV_EXPORT_URL)
+        try:
+            with urllib.request.urlopen(req, timeout=15, context=ssl_ctx) as resp:
+                content = resp.read().decode('utf-8')
+                reader = csv.DictReader(io.StringIO(content))
+                rows = list(reader)
+        except Exception as e:
+            print(f"  [warn] CSVスプレッドシートの読み込みエラー: {e}")
 
     weekday_ja = ["月", "火", "水", "木", "金", "土", "日"]
     schedules_by_date = {}
