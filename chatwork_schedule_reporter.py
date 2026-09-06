@@ -18,6 +18,40 @@ PRIVATE_CHATWORK_ROOM_ID_PATH = os.path.join(CONFIG_DIR, "private_chatwork_room_
 MASTER_SHEET_URL = "https://docs.google.com/spreadsheets/d/12zT7vCUqcAZ0YexlnCt2U3BWeT0YbYMW1DPjtgT54WQ/edit#gid=1930246157"
 CSV_EXPORT_URL = "https://docs.google.com/spreadsheets/d/12zT7vCUqcAZ0YexlnCt2U3BWeT0YbYMW1DPjtgT54WQ/gviz/tq?tqx=out:csv&gid=1930246157"
 
+def fetch_schedule_rows():
+    sa_path = os.path.expanduser("~/.config/mcp-google-sheets/service-account.json")
+    rows = []
+
+    if os.path.exists(sa_path):
+        for attempt in range(1, 4):
+            try:
+                import gspread
+                gc = gspread.service_account(filename=sa_path)
+                sh = gc.open_by_key("12zT7vCUqcAZ0YexlnCt2U3BWeT0YbYMW1DPjtgT54WQ")
+                ws = sh.worksheet("配信スケジュール管理")
+                rows = ws.get_all_records()
+                if rows:
+                    return rows, None
+            except Exception as e:
+                print(f"  [warn] gspreadでのスプレッドシート読み込み失敗 ({attempt}/3): {e}")
+                time.sleep(3)
+
+    ssl_ctx = ssl._create_unverified_context()
+    req = urllib.request.Request(CSV_EXPORT_URL)
+    for attempt in range(1, 4):
+        try:
+            with urllib.request.urlopen(req, timeout=15, context=ssl_ctx) as resp:
+                content = resp.read().decode('utf-8')
+                reader = csv.DictReader(io.StringIO(content))
+                rows = list(reader)
+                if rows:
+                    return rows, None
+        except Exception as e:
+            print(f"  [warn] CSVスプレッドシートの読み込みエラー ({attempt}/3): {e}")
+            time.sleep(3)
+
+    return [], "スプレッドシートからのデータ取得に失敗しました（Google API 503/通信タイムアウト）"
+
 def build_message():
     today = datetime.date.today()
     if today.weekday() == 6:  # 日曜日の場合は翌週月曜日〜日曜日を対象
@@ -37,39 +71,20 @@ def build_message():
     msg += f"📱 今週の配信スケジュール（{monday_str}〜{sunday_str}）\n"
     msg += "━━━━━━━━━━\n\n"
 
-    rows = []
-    sa_path = os.path.expanduser("~/.config/mcp-google-sheets/service-account.json")
-    if os.path.exists(sa_path):
-        try:
-            import gspread
-            gc = gspread.service_account(filename=sa_path)
-            sh = gc.open_by_key("12zT7vCUqcAZ0YexlnCt2U3BWeT0YbYMW1DPjtgT54WQ")
-            ws = sh.worksheet("配信スケジュール管理")
-            rows = ws.get_all_records()
-        except Exception as e:
-            print(f"  [warn] gspreadでのスプレッドシート読み込み失敗: {e}")
-
-    if not rows:
-        ssl_ctx = ssl._create_unverified_context()
-        req = urllib.request.Request(CSV_EXPORT_URL)
-        try:
-            with urllib.request.urlopen(req, timeout=15, context=ssl_ctx) as resp:
-                content = resp.read().decode('utf-8')
-                reader = csv.DictReader(io.StringIO(content))
-                rows = list(reader)
-        except Exception as e:
-            print(f"  [warn] CSVスプレッドシートの読み込みエラー: {e}")
+    rows, fetch_err = fetch_schedule_rows()
+    if fetch_err:
+        raise RuntimeError(fetch_err)
 
     weekday_ja = ["月", "火", "水", "木", "金", "土", "日"]
     schedules_by_date = {}
     for r in rows:
-        pdate = r.get("配信予定日", "").strip()
+        pdate = str(r.get("配信予定日", "")).strip()
         if not pdate:
             continue
         try:
             dt = datetime.datetime.strptime(pdate, "%Y-%m-%d").date()
             if monday <= dt <= sunday:
-                wday_str = r.get("曜日", "").strip() or weekday_ja[dt.weekday()]
+                wday_str = str(r.get("曜日", "")).strip() or weekday_ja[dt.weekday()]
                 date_key = f"{dt.month}/{dt.day}({wday_str})"
                 if date_key not in schedules_by_date:
                     schedules_by_date[date_key] = []
@@ -81,13 +96,13 @@ def build_message():
         for date_key, items in schedules_by_date.items():
             msg += f"【{date_key}】\n"
             for idx, (item, dt) in enumerate(items):
-                status_val = item.get("確認ステータス", "").strip()
-                time_val = item.get("配信時間", "").strip()
-                media_val = item.get("配信媒体", "").strip()
-                title_val = item.get("原稿タイトル / 配信名", "").strip()
-                target_user = item.get("配信対象", "").strip()
-                role_val = item.get("担当役割", "").strip()
-                action_val = item.get("アクション事項", "").strip()
+                status_val = str(item.get("確認ステータス", "")).strip()
+                time_val = str(item.get("配信時間", "")).strip()
+                media_val = str(item.get("配信媒体", "")).strip()
+                title_val = str(item.get("原稿タイトル / 配信名", "")).strip()
+                target_user = str(item.get("配信対象", "")).strip()
+                role_val = str(item.get("担当役割", "")).strip()
+                action_val = str(item.get("アクション事項", "")).strip()
 
                 if media_val:
                     msg += f"・配信媒体：{media_val}\n"
@@ -153,7 +168,11 @@ def main():
             target_room_id = "445327814"
         print(f"  [info] テスト送信モードです (送信先ルームID: {target_room_id})")
 
-    msg = build_message()
+    try:
+        msg = build_message()
+    except Exception as e:
+        print(f"  [error] メッセージ構築失敗: {e}")
+        sys.exit(1)
 
     today_str = datetime.date.today().isoformat()
     lock_file = os.path.join(CONFIG_DIR, f"logs/sent_weekly_schedule_{today_str}.flag")
