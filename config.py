@@ -88,5 +88,11 @@ DAY_ROWS = [
     "apply_day", "sale_day", "amount_day",
 ]
 
+# 「キャンセルされていない有効な予約」とみなすステータス。参加率の【分母】に使う。
+# UTAGEには「欠席」ステータスが無く、来なかった人も reserved のまま残る。
+# そのため分母は reserved(=結果的に欠席)も含み、分子(attended)と集合が違うのが正しい。
+# ★delay(遅刻)は運用上使わない方針(2026-09-07ユーザー確認)。参加とみなすのは attended だけ。
+#   ここに delay を残してあるのは、万一付いた場合に「有効な予約」から漏らさないため。
+#   分子(参加数)に delay を足す変更はしないこと。
 ACTIVE_STATUSES = {"reserved", "attended", "delay"}
 WEEKDAYS = ["月", "火", "水", "木", "金", "土", "日"]

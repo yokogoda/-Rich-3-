@@ -76,7 +76,10 @@ def fetch_seminar_slot_details(key, target_date=None):
                 for a in applicants:
                     sched_id = (a.get("schedule") or {}).get("id")
                     status = a.get("status_participation")
-                    if status in ("attended", "participated"):
+                    # 参加とみなすのは attended だけ(2026-09-07ユーザー確認)。
+                    # UTAGEの参加状況は reserved/attended/delay/cancel_*の6値しかなく、
+                    # "participated" は存在しない値だったので外した。
+                    if status == "attended":
                         attended_by_sched[sched_id] = attended_by_sched.get(sched_id, 0) + 1
         except Exception as e:
             print(f"  [warn] 参加者データの取得失敗: {e}")
