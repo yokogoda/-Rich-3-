@@ -173,32 +173,6 @@ def build_message(target_date, items):
     lines.append("■ 開催概要")
     lines.append(f"・日程: {date_str}")
 
-    if items:
-        urls_seen = []
-        for item in items:
-            z_url = item.get('zoom_url', '').strip()
-            if z_url and z_url not in urls_seen:
-                urls_seen.append(z_url)
-
-        if len(urls_seen) == 1:
-            clean_url = clean_zoom_url(urls_seen[0])
-            mid = format_meeting_id(urls_seen[0])
-            mid_str = f" （ミーティングID: {mid}）" if mid else ""
-            lines.append(f"・無料個別相談会 Zoom URL: {clean_url}{mid_str}")
-        elif len(urls_seen) > 1:
-            lines.append("・無料個別相談会 Zoom URL:")
-            for item in items:
-                z_url = item.get('zoom_url', '').strip()
-                if z_url:
-                    clean_url = clean_zoom_url(z_url)
-                    mid = format_meeting_id(z_url)
-                    mid_str = f" （ミーティングID: {mid}）" if mid else ""
-                    lines.append(f"　└ {item['time_slot']} : {clean_url}{mid_str}")
-        else:
-            lines.append("・無料個別相談会 Zoom URL: 自動発行")
-    else:
-        lines.append("・無料個別相談会 Zoom URL: —")
-
     sheet_url = f"https://docs.google.com/spreadsheets/d/{SHEET_ID}/edit?gid={SHEET_TAB_GID}#gid={SHEET_TAB_GID}"
 
     lines.extend([
@@ -206,8 +180,11 @@ def build_message(target_date, items):
         "■ 各種確認リスト＆マニュアル",
         "・個別相談予約リスト＆後追い▼",
         sheet_url,
-        "・個別相談_承認・非承認・面談後 マニュアル(言海さん用)▼",
-        MANUAL_FILE_URL
+        "・ステータス変更マニュアル(言海さん用)▼",
+        MANUAL_FILE_URL,
+        "",
+        "個別相談予約2時間半後に、個別相談のThanks＋本講座案内は自動で届きます。",
+        "早めにご案内を送りたい場合は手動となりますのでCWからお知らせください。"
     ])
 
     return "\n".join(lines)
