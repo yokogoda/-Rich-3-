@@ -232,7 +232,22 @@ def fetch_seminar_stats(key, event_project_id, target_date):
                 booked_day += 1
 
     applied = {k: booked[k] + cancelled[k] for k in keys}
-    attended = sum(1 for a in applicants if a.get("status_participation") == "attended")
+    # 参加数も分母(booked_finished)と同じ「対象日までに開催された枠」で絞る。
+    # 絞らないと、過去日をバックフィルしたときに未来の回の参加者まで分子に入り、
+    # 参加率が100%を超える(2026-09-04修正。実測: target=8/19 で 19/13=146.2% → 11/13=84.6%)。
+    attended = sum(
+        1 for a in applicants
+        if a.get("status_participation") == "attended"
+        and (((a.get("schedule") or {}).get("start_datetime") or "")[:10] or "9999-12-31") <= target_str
+    )
+
+    no_slot_attended = sum(
+        1 for a in applicants
+        if a.get("status_participation") == "attended"
+        and not ((a.get("schedule") or {}).get("start_datetime") or "")
+    )
+    if no_slot_attended:
+        print(f"  [warn] 枠日付が無い参加済みレコードを{no_slot_attended}件、参加数から除外しました")
 
     per_slot = {}
     for a in applicants:

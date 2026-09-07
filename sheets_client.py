@@ -161,6 +161,10 @@ def write_summary(ws, m, target_date, stats=None):
         "セミナー:参加数": attended,
         "セミナー:参加率": round(attended / booked_finished, 4) if booked_finished else "",
         "個別相談会:予約数": m.get("ind_cum"),
+        # 分母はセミナー参加数。monolith版(本番)が書いていた指標で、分割版で欠けていた。
+        # 書かないとセルが古い値のまま残り続け、誰も気づけないため必ず書く(2026-09-07復元)。
+        "個別相談会:予約率": (round(m["ind_cum"] / attended, 4)
+                              if attended and isinstance(m.get("ind_cum"), (int, float)) else ""),
         "本講座:申込数": m.get("apply_cum"), "本講座:成約数": m.get("sale_cum"),
         "本講座:成約率": m.get("sale_rate"), "本講座:売上金額": m.get("amount_cum"),
     }
