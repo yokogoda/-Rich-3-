@@ -287,7 +287,7 @@ def fetch_metrics(key, target_date):
             WEBINAR_LP_PAGE_IDS)
         web_ad_pages = find_pages_any(
             utage_get(key, f"/funnels/{LP_FUNNEL}/stats/daily",
-                      {"page_ids": ",".join(WEBINAR_AD_PAGE_IDS), "date_from": WEBINAR_AD_PAGE_IDS, "date_to": date_to}),
+                      {"page_ids": ",".join(WEBINAR_AD_PAGE_IDS), "date_from": WEBINAR_LP_COUNT_START.isoformat(), "date_to": date_to}),
             WEBINAR_AD_PAGE_IDS)
 
     sem_data = utage_get(key, f"/funnels/{SEM_FUNNEL}/stats/daily",
