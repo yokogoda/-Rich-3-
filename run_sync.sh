@@ -14,6 +14,9 @@ caffeinate -i bash -c '
   # セミナー当日であれば速報レポートを自動送信
   python3 "$HOME/.config/utage-pdca/send_seminar_day_report.py" || true
 
+  # 本日個別相談の予約があればリマインドレポートを自動送信
+  python3 "$HOME/.config/utage-pdca/send_consultation_day_report.py" --send || true
+
   # 毎週月曜日であれば週間配信スケジュール報告を自動送信
   if [ "$(date +%u)" -eq 1 ]; then
       python3 "$HOME/.config/utage-pdca/chatwork_schedule_reporter.py" --send || true

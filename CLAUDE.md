@@ -42,6 +42,19 @@ python3 ~/.config/utage-pdca/chatwork_schedule_reporter.py --send --test
 python3 ~/.config/utage-pdca/chatwork_schedule_reporter.py --send
 ```
 
+### ④ 当日開催 個別相談リマインド報告
+本日開催予定の個別相談（UTAGE API / スプレッドシート連動）を自動検出し、Chatworkへリマインド投稿します（予約なし日は自動スキップ）。
+```bash
+# プレビュー
+python3 ~/.config/utage-pdca/send_consultation_day_report.py
+
+# テスト送信
+python3 ~/.config/utage-pdca/send_consultation_day_report.py --send --test
+
+# 本番送信
+python3 ~/.config/utage-pdca/send_consultation_day_report.py --send
+```
+
 ---
 
 ## 3. 日付判定ロジックと動作仕様
