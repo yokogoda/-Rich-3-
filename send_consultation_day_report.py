@@ -17,7 +17,7 @@ CONSULTATION_EVENT_ID = "YyESC92nIW9c"
 SHEET_ID = "1Bo6um_mJ1Eur87vUPEbEnCC5RtGaXyLKPDIHTMqHAAk"
 SHEET_TAB_NAME = "【事務局管理用】個別面談予約リスト"
 SHEET_TAB_GID = "1499419433"
-MANUAL_FILE_URL = "https://www.chatwork.com/gateway/download_file.php?bin=1&file_id=2125470203"
+MANUAL_FILE_URL = "https://cdn.fbsbx.com/v/t59.2708-21/798771503_4338837136427579_4171348848385095732_n.docx/UTAGE_%E5%8F%82%E5%8A%A0%E7%8A%B6%E6%B3%81%E5%A4%89%E6%9B%B4%E3%83%9E%E3%83%8B%E3%83%A5%E3%82%A2%E3%83%AB_%E3%83%86%E3%82%99%E3%82%B5%E3%82%99%E3%82%A4%E3%83%B3%E7%B5%B1%E4%B8%80%E7%89%88_%E4%BF%AE%E6%AD%A3%E7%89%88.docx?_nc_cat=109&ccb=1-7&_nc_sid=2b0e22&_nc_ohc=c4RH19XYV4QQ7kNvwEn1gAQ&_nc_oc=AdpSm_oJQeds49SJF7w9vSP7FU5YS-CIjyW726hIlbHxQr0pZMaUwn9RMDK0NxO08h0DFD1pYuR7kGoTC_-hxvQ5&_nc_ad=z-m&_nc_cid=0&_nc_zt=7&_nc_ht=cdn.fbsbx.com&_nc_gid=OY4kS7K0TG-L6URwg3hvqA&_nc_ss=7a22e&oh=03_Q7cD6QHjjYnP7poPBM_nOqq0VKIk5XG3AkkFc1e_d1Ituunvsg&oe=6A9FE958&dl=1"
 
 def format_meeting_id(url):
     m = re.search(r'/j/(\d+)', url)
