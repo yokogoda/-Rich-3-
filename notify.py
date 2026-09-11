@@ -126,21 +126,48 @@ def build_report(m, target_date, stats, slot_status=None, key=None):
 
     lines = [
         f"【愛されRich3期 日次レポート】{date_label}",
-        f"※次回セミナー({target_seminar.month}/{target_seminar.day})まで あと{days_until}日！",
-        "",
-        "■ LP訪問・登録（前日/累計）",
-        "・全体訪問　",
-        f"UU: {fmt_num(m['lp_uu_all_day'])} / {fmt_num(m['lp_uu_all_cum'])}"
-        f"　登録: {fmt_num(m['reg_all_day'])} / {fmt_num(m['reg_all_cum'])}（{fmt_rate(m['regrate_all'])}）",
-        "・オーガニック(SNS/メルマガ)",
-        f"UU: {fmt_num(m['lp_uu_sem_day'])} / {fmt_num(m['lp_uu_sem_cum'])}"
-        f"　登録: {fmt_num(m['reg_sem_day'])} / {fmt_num(m['reg_sem_cum'])}（{fmt_rate(m['regrate_sem'])}）",
-        "・広告経由(Meta広告)　　",
-        f"UU: {fmt_num(m['lp_uu_ad_day'])} / {fmt_num(m['lp_uu_ad_cum'])}"
-        f"　登録: {fmt_num(m['reg_ad_day'])} / {fmt_num(m['reg_ad_cum'])}（{fmt_rate(m['regrate_ad'])}）",
-        "",
-        "■ セミナー予約（前日/累計）※キャンセル除外・日程変更は1名1件",
     ]
+
+    if datetime.date.today() <= target_seminar and days_until >= 0:
+        lines.append(f"※次回セミナー({target_seminar.month}/{target_seminar.day})まで あと{days_until}日！")
+
+    lines.append("")
+
+    # 1. ウェビナー
+    lines.append("■ ウェビナーLP流入・登録（前日/累計）")
+    lines.append(
+        f"・全体　　　UU: {fmt_num(m.get('web_uu_all_day'))} / {fmt_num(m.get('web_uu_all_cum'))}"
+        f"　登録: {fmt_num(m.get('web_reg_all_day'))} / {fmt_num(m.get('web_reg_all_cum'))}（{fmt_rate(m.get('web_regrate_all'))}）"
+    )
+    lines.append(
+        f"・オーガニック UU: {fmt_num(m.get('web_uu_org_day'))} / {fmt_num(m.get('web_uu_org_cum'))}"
+        f"　登録: {fmt_num(m.get('web_reg_org_day'))} / {fmt_num(m.get('web_reg_org_cum'))}（{fmt_rate(m.get('web_regrate_org'))}）"
+    )
+    lines.append(
+        f"・広告経由　 UU: {fmt_num(m.get('web_uu_ad_day'))} / {fmt_num(m.get('web_uu_ad_cum'))}"
+        f"　登録: {fmt_num(m.get('web_reg_ad_day'))} / {fmt_num(m.get('web_reg_ad_cum'))}（{fmt_rate(m.get('web_regrate_ad'))}）"
+    )
+    lines.append("")
+
+    # 2. セミナー
+    lines.append("■ セミナーLP訪問・登録（前日/累計）")
+    lines.append(
+        "・全体訪問　"
+        f"UU: {fmt_num(m['lp_uu_all_day'])} / {fmt_num(m['lp_uu_all_cum'])}"
+        f"　登録: {fmt_num(m['reg_all_day'])} / {fmt_num(m['reg_all_cum'])}（{fmt_rate(m['regrate_all'])}）"
+    )
+    lines.append(
+        "・オーガニック(SNS/メルマガ)"
+        f"UU: {fmt_num(m['lp_uu_sem_day'])} / {fmt_num(m['lp_uu_sem_cum'])}"
+        f"　登録: {fmt_num(m['reg_sem_day'])} / {fmt_num(m['reg_sem_cum'])}（{fmt_rate(m['regrate_sem'])}）"
+    )
+    lines.append(
+        "・広告経由(Meta広告)　　"
+        f"UU: {fmt_num(m['lp_uu_ad_day'])} / {fmt_num(m['lp_uu_ad_cum'])}"
+        f"　登録: {fmt_num(m['reg_ad_day'])} / {fmt_num(m['reg_ad_cum'])}（{fmt_rate(m['regrate_ad'])}）"
+    )
+    lines.append("")
+    lines.append("■ セミナー予約（前日/累計）※キャンセル除外・日程変更は1名1件")
 
     b, c, a = stats["booked"], stats["cancelled"], stats["applied"]
 
@@ -170,52 +197,17 @@ def build_report(m, target_date, stats, slot_status=None, key=None):
                      f"（開催済み{stats.get('booked_finished', 0)}名の "
                      f"{fmt_rate(rate(stats['attended'], stats.get('booked_finished')))}）")
 
-    if isinstance(m.get("ind_cum"), (int, float)) and m["ind_cum"] > 0:
-        lines.append("")
-        lines.append("■ 個別相談（前日/累計）")
-        lines.append(f"・予約数: {fmt_num(m['ind_day'])} / {fmt_num(m['ind_cum'])}名")
-
-    if isinstance(m.get("web_uu_all_cum"), (int, float)) and m["web_uu_all_cum"] > 0:
-        lines.append("")
-        lines.append("■ ウェビナーLP流入・登録（前日/累計）")
-        lines.append(
-            f"・全体　　　UU: {fmt_num(m['web_uu_all_day'])} / {fmt_num(m['web_uu_all_cum'])}"
-            f"　登録: {fmt_num(m['web_reg_all_day'])} / {fmt_num(m['web_reg_all_cum'])}（{fmt_rate(m['web_regrate_all'])}）"
-        )
-        lines.append(
-            f"・オーガニック UU: {fmt_num(m['web_uu_org_day'])} / {fmt_num(m['web_uu_org_cum'])}"
-            f"　登録: {fmt_num(m['web_reg_org_day'])} / {fmt_num(m['web_reg_org_cum'])}（{fmt_rate(m['web_regrate_org'])}）"
-        )
-        lines.append(
-            f"・広告経由　 UU: {fmt_num(m['web_uu_ad_day'])} / {fmt_num(m['web_uu_ad_cum'])}"
-            f"　登録: {fmt_num(m['web_reg_ad_day'])} / {fmt_num(m['web_reg_ad_cum'])}（{fmt_rate(m['web_regrate_ad'])}）"
-        )
-
+    # 3. 個別相談
     lines.append("")
-    lines.append("■ 📅 セミナー開催枠別の予約・参加状況")
-    slots = fetch_seminar_slot_details(key, target_date) if key else []
-    if slots:
-        finished_booked = 0
-        finished_attended = 0
-        for s in slots:
-            if s["is_finished"]:
-                rate_str = f"（参加率 {round(s['attended'] / s['booked'] * 100, 1)}%）" if s["booked"] else ""
-                lines.append(f"・{s['date_label']} 【終了】")
-                lines.append(f" : 予約 {s['booked']}名 / 参加 {s['attended']}名{rate_str}")
-                finished_booked += s["booked"]
-                finished_attended += s["attended"]
-            else:
-                lines.append(f"・{s['date_label']}")
-                lines.append(f" : 予約 {s['booked']}名 / 残 {s['rem']}席（限定8枠）")
+    lines.append("■ 個別相談（前日/累計）")
+    lines.append(f"・予約数: {fmt_num(m.get('ind_day'))} / {fmt_num(m.get('ind_cum'))}名")
 
-        if finished_booked > 0:
-            total_rate_str = f"（参加率 {round(finished_attended / finished_booked * 100, 1)}%）"
-            lines.append(f"・終了枠 参加者数合計: {finished_attended}名 / 予約{finished_booked}名{total_rate_str}")
-    else:
-        for date_key, date_display in SEMINAR_SLOT_DISPLAY:
-            count, remain = (slot_status or {}).get(date_key, ("—", "—"))
-            lines.append(f"・{date_display}")
-            lines.append(f" : 予約 {count}名 / 残 {remain}席（限定8枠）")
+    # 4. 本講座
+    lines.append("")
+    lines.append("■ 本講座（前日/累計）")
+    lines.append(f"・申込数: {fmt_num(m.get('apply_day'))} / {fmt_num(m.get('apply_cum'))}名")
+    lines.append(f"・成約数: {fmt_num(m.get('sale_day'))} / {fmt_num(m.get('sale_cum'))}件（{fmt_rate(m.get('sale_rate'))}）")
+    lines.append(f"・売上金額: {fmt_num(m.get('amount_day'))}円 / {fmt_num(m.get('amount_cum'))}円")
 
     lines.append("")
     lines.append("数値レポートはこちら▼")
