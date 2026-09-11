@@ -16,6 +16,7 @@ from config import (
     SEM_EVENT_PROJECT_ID,
     SEMINAR_CAPACITY,
     SPREADSHEET_URL,
+    WEBINAR_LP_COUNT_START,
 )
 
 NOTIFY_ENABLED = True
@@ -133,23 +134,7 @@ def build_report(m, target_date, stats, slot_status=None, key=None):
 
     lines.append("")
 
-    # 1. ウェビナー
-    lines.append("■ ウェビナーLP流入・登録（前日/累計）")
-    lines.append(
-        f"・全体　　　UU: {fmt_num(m.get('web_uu_all_day'))} / {fmt_num(m.get('web_uu_all_cum'))}"
-        f"　登録: {fmt_num(m.get('web_reg_all_day'))} / {fmt_num(m.get('web_reg_all_cum'))}（{fmt_rate(m.get('web_regrate_all'))}）"
-    )
-    lines.append(
-        f"・オーガニック UU: {fmt_num(m.get('web_uu_org_day'))} / {fmt_num(m.get('web_uu_org_cum'))}"
-        f"　登録: {fmt_num(m.get('web_reg_org_day'))} / {fmt_num(m.get('web_reg_org_cum'))}（{fmt_rate(m.get('web_regrate_org'))}）"
-    )
-    lines.append(
-        f"・広告経由　 UU: {fmt_num(m.get('web_uu_ad_day'))} / {fmt_num(m.get('web_uu_ad_cum'))}"
-        f"　登録: {fmt_num(m.get('web_reg_ad_day'))} / {fmt_num(m.get('web_reg_ad_cum'))}（{fmt_rate(m.get('web_regrate_ad'))}）"
-    )
-    lines.append("")
-
-    # 2. セミナー
+    # 1. セミナー
     lines.append("■ セミナーLP訪問・登録（前日/累計）")
     lines.append(
         "・全体訪問　"
@@ -196,6 +181,23 @@ def build_report(m, target_date, stats, slot_status=None, key=None):
         lines.append(f"・参加数: 累計{stats['attended']}名"
                      f"（開催済み{stats.get('booked_finished', 0)}名の "
                      f"{fmt_rate(rate(stats['attended'], stats.get('booked_finished')))}）")
+
+    # 2. ウェビナー（9/12開始〜、または計測データが存在する場合に表示）
+    if target_date >= WEBINAR_LP_COUNT_START or (isinstance(m.get("web_uu_all_cum"), (int, float)) and m["web_uu_all_cum"] > 0):
+        lines.append("")
+        lines.append("■ ウェビナーLP流入・登録（前日/累計）")
+        lines.append(
+            f"・全体　　　UU: {fmt_num(m.get('web_uu_all_day'))} / {fmt_num(m.get('web_uu_all_cum'))}"
+            f"　登録: {fmt_num(m.get('web_reg_all_day'))} / {fmt_num(m.get('web_reg_all_cum'))}（{fmt_rate(m.get('web_regrate_all'))}）"
+        )
+        lines.append(
+            f"・オーガニック UU: {fmt_num(m.get('web_uu_org_day'))} / {fmt_num(m.get('web_uu_org_cum'))}"
+            f"　登録: {fmt_num(m.get('web_reg_org_day'))} / {fmt_num(m.get('web_reg_org_cum'))}（{fmt_rate(m.get('web_regrate_org'))}）"
+        )
+        lines.append(
+            f"・広告経由　 UU: {fmt_num(m.get('web_uu_ad_day'))} / {fmt_num(m.get('web_uu_ad_cum'))}"
+            f"　登録: {fmt_num(m.get('web_reg_ad_day'))} / {fmt_num(m.get('web_reg_ad_cum'))}（{fmt_rate(m.get('web_regrate_ad'))}）"
+        )
 
     # 3. 個別相談
     lines.append("")
