@@ -74,8 +74,12 @@ def write_date(ws, m, target_date, stats=None):
             f"想定列={col} 期待={expected_label} 実際={actual_label!r}"
         )
 
+    # ★行の範囲はROWから引く。数字を直書きすると、行を足したときに
+    #   その行だけ無言で書かれなくなる(2026-09-11: 11〜63固定のままROWが73まで
+    #   伸びていたため、セミナー予約数などが落ちる状態だった)。
+    row_first, row_last = min(ROW.values()), max(ROW.values())
     prev_col = col_letter(col_idx0 - 1)
-    prev_vals = read_column(ws, prev_col, start_row=11, end_row=63)
+    prev_vals = read_column(ws, prev_col, start_row=row_first, end_row=row_last)
 
     if stats:
         m["sem_cum"] = stats["booked"]["all"]
@@ -115,14 +119,14 @@ def write_date(ws, m, target_date, stats=None):
             print(f"  [warn] {target_date} {key_name}: 前日({prev_val})の8倍以上に急増({new_val}) 要確認")
 
     full_col = []
-    for r in range(11, 64):
+    for r in range(row_first, row_last + 1):
         val = cell_updates.get(r, "")
         if val == "" and r in prev_vals:
             val = ""
         print(f"  row{r:<2} {next((k for k, v in ROW.items() if v == r), ''):<18} = {val}")
         full_col.append([val])
 
-    range_name = f"{col}11:{col}63"
+    range_name = f"{col}{row_first}:{col}{row_last}"
     with_retry(lambda: ws.update(range_name=range_name, values=full_col))
     print(f"  書き込み完了: {col}列（{target_date}）")
     return m, decreased
@@ -153,9 +157,19 @@ def write_summary(ws, m, target_date, stats=None):
     attended = stats["attended"] if stats else 0
     booked_finished = stats.get("booked_finished", 0) if stats else 0
 
+    # 【2026-09-11】サマリー(行4〜7)を行の並びに合わせて作り直しました。
+    #   旧: LP / セミナー / 個別相談会 / 本講座
+    #   新: ウェビナーLP / ウェビナー / 個別相談会 / 本講座 / セミナーLP / セミナー
+    # 旧ラベル「LP:〜」はセミナーLPのことでしたが、ウェビナーLPと紛らわしいので
+    # 「セミナーLP:〜」へ改名し、指標名の重複(LP登録数→登録数)も外しました。
+    # ★古いラベルのままだと該当列が見つからず、その指標だけ更新されません(warnは出ます)。
+    # 「ウェビナー:予約数/予約率/視聴開始/視聴完了/視聴完了率」の5つは夏菜側が書きます。
     summary_by_label = {
-        "LP:PV": m.get("lp_pv_all_cum"), "LP:UU": m.get("lp_uu_all_cum"),
-        "LP:LP登録数": m.get("reg_all_cum"), "LP:LP登録率": m.get("regrate_all"),
+        "セミナーLP:PV": m.get("lp_pv_all_cum"), "セミナーLP:UU": m.get("lp_uu_all_cum"),
+        "セミナーLP:登録数": m.get("reg_all_cum"), "セミナーLP:登録率": m.get("regrate_all"),
+        "ウェビナーLP:PV": m.get("web_pv_all_cum"), "ウェビナーLP:UU": m.get("web_uu_all_cum"),
+        "ウェビナーLP:登録数": m.get("web_reg_all_cum"),
+        "ウェビナーLP:登録率": m.get("web_regrate_all"),
         "セミナー:予約数": total_cum,
         "セミナー:予約率": round(total_cum / m["reg_all_cum"], 4) if m.get("reg_all_cum") else "",
         "セミナー:参加数": attended,

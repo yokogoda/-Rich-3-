@@ -28,7 +28,12 @@ LP_FUNNEL = "3FQFH1OGtggw"
 LP_PAGE_SEMINAR_IDS = ["0Vkf2Xbh7Z51", "SzjnNkjXB0E8"]
 LP_PAGE_AD_IDS = ["9UFM3KgpnZuT", "r78i61GBLPz0"]
 
-WEBINAR_LP_COUNT_START = datetime.date(2026, 9, 12)
+# 【2026-09-11に9/12→9/11へ変更】当初は「公開日=9/12」として9/12起点にしていたが、
+# 実際には9/11の夜にウェビナーLPへの切り替えと広告の出し替えが行われ、同日に実データが
+# 発生していた(オーガニックLP: PV7/UU4/登録1、広告LP: PV43/UU36)。9/12起点のままだと
+# この初日分が日別にも累計にも一生入らないため9/11へ前倒し。
+# 9/10以前は1日1〜5PVの確認用アクセスと9/5のテスト登録1件だけなので9/11が境目として妥当。
+WEBINAR_LP_COUNT_START = datetime.date(2026, 9, 11)
 WEBINAR_LP_PAGE_IDS = ["67GSIiohgEMV"]
 WEBINAR_AD_PAGE_IDS = ["mwGnEJqUeLXb"]
 
@@ -48,30 +53,50 @@ FIRST_SEMINAR_DATE = datetime.date(2026, 8, 18)
 OPEN_SEMINAR_SLOTS = 5
 SEMINAR_CAPACITY = 8
 
+# 【2026-09-11 22時 シートの行を並べ替えました。必ずpullしてから実行してください】
+# 9/12からウェビナーが主役になるため、開いた瞬間にウェビナーが見えるように並びを変えました。
+#   旧: 11-34 セミナー / 35-42 個別〜売上 / 43-73 ウェビナー
+#   新: 11-41 ウェビナー / 42-49 個別〜売上 / 50-73 セミナー
+#   ずれ幅は3種類 … LP系とセミナー予約 +39 / 個別〜売上 +7 / ウェビナー -32
+#
+# ★古いROWのまま実行すると、ズレた行に書き込まれます。
+#   列見出しの日付チェックも累計の減少チェックもこの種のズレは検知できないので、静かに壊れます。
+#
+# 行32〜41（ウェビナー予約数・視聴状況・視聴率）は2026-09-11に新設した行です。
+# 夏菜側の本番スクリプトが書き込みます。こちら側では値を作っていないので、
+# ROWにキーはあっても書き込み対象になりません（cell_updatesはmにあるキーだけを拾うため）。
 ROW = {
-    "lp_pv_all_cum": 11, "lp_uu_all_cum": 12,
-    "lp_pv_sem_cum": 13, "lp_uu_sem_cum": 14,
-    "lp_pv_ad_cum": 15, "lp_uu_ad_cum": 16,
-    "lp_pv_all_day": 17, "lp_uu_all_day": 18,
-    "lp_pv_sem_day": 19, "lp_uu_sem_day": 20,
-    "lp_pv_ad_day": 21, "lp_uu_ad_day": 22,
-    "reg_all_cum": 23, "reg_sem_cum": 24, "reg_ad_cum": 25,
-    "reg_all_day": 26, "reg_sem_day": 27, "reg_ad_day": 28,
-    "regrate_all": 29, "regrate_sem": 30, "regrate_ad": 31,
-    "sem_cum": 32, "sem_day": 33, "sem_rate": 34,
-    "ind_cum": 35, "ind_day": 36,
-    "apply_cum": 37, "apply_day": 38,
-    "sale_cum": 39, "sale_day": 40,
-    "amount_cum": 41, "amount_day": 42,
-    "web_pv_all_cum": 43, "web_uu_all_cum": 44,
-    "web_pv_org_cum": 45, "web_uu_org_cum": 46,
-    "web_pv_ad_cum": 47, "web_uu_ad_cum": 48,
-    "web_pv_all_day": 49, "web_uu_all_day": 50,
-    "web_pv_org_day": 51, "web_uu_org_day": 52,
-    "web_pv_ad_day": 53, "web_uu_ad_day": 54,
-    "web_reg_all_cum": 55, "web_reg_org_cum": 56, "web_reg_ad_cum": 57,
-    "web_reg_all_day": 58, "web_reg_org_day": 59, "web_reg_ad_day": 60,
-    "web_regrate_all": 61, "web_regrate_org": 62, "web_regrate_ad": 63,
+    # --- ウェビナー(11〜41) ---
+    "web_pv_all_cum": 11, "web_uu_all_cum": 12,
+    "web_pv_org_cum": 13, "web_uu_org_cum": 14,
+    "web_pv_ad_cum": 15, "web_uu_ad_cum": 16,
+    "web_pv_all_day": 17, "web_uu_all_day": 18,
+    "web_pv_org_day": 19, "web_uu_org_day": 20,
+    "web_pv_ad_day": 21, "web_uu_ad_day": 22,
+    "web_reg_all_cum": 23, "web_reg_org_cum": 24, "web_reg_ad_cum": 25,
+    "web_reg_all_day": 26, "web_reg_org_day": 27, "web_reg_ad_day": 28,
+    "web_regrate_all": 29, "web_regrate_org": 30, "web_regrate_ad": 31,
+    # ここから下は2026-09-11新設（夏菜側が書き込み）
+    "web_book_cum": 32, "web_book_day": 33, "web_bookrate": 34,
+    "web_lab_apply": 35, "web_lab_start": 36, "web_lab_done": 37,
+    "web_lab_dropout": 38, "web_lab_noshow": 39,
+    "web_startrate": 40, "web_donerate": 41,
+    # --- 個別相談〜売上(42〜49。セミナー期・ウェビナー期の両方にまたがる) ---
+    "ind_cum": 42, "ind_day": 43,
+    "apply_cum": 44, "apply_day": 45,
+    "sale_cum": 46, "sale_day": 47,
+    "amount_cum": 48, "amount_day": 49,
+    # --- セミナー(50〜73。9/11で終了。シート上は折りたたんであります) ---
+    "lp_pv_all_cum": 50, "lp_uu_all_cum": 51,
+    "lp_pv_sem_cum": 52, "lp_uu_sem_cum": 53,
+    "lp_pv_ad_cum": 54, "lp_uu_ad_cum": 55,
+    "lp_pv_all_day": 56, "lp_uu_all_day": 57,
+    "lp_pv_sem_day": 58, "lp_uu_sem_day": 59,
+    "lp_pv_ad_day": 60, "lp_uu_ad_day": 61,
+    "reg_all_cum": 62, "reg_sem_cum": 63, "reg_ad_cum": 64,
+    "reg_all_day": 65, "reg_sem_day": 66, "reg_ad_day": 67,
+    "regrate_all": 68, "regrate_sem": 69, "regrate_ad": 70,
+    "sem_cum": 71, "sem_day": 72, "sem_rate": 73,
 }
 
 CUM_ROWS = [
