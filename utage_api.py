@@ -232,14 +232,28 @@ def fetch_seminar_stats(key, event_project_id, target_date):
                 booked_day += 1
 
     applied = {k: booked[k] + cancelled[k] for k in keys}
-    # 参加数も分母(booked_finished)と同じ「対象日までに開催された枠」で絞る。
-    # 絞らないと、過去日をバックフィルしたときに未来の回の参加者まで分子に入り、
-    # 参加率が100%を超える(2026-09-04修正。実測: target=8/19 で 19/13=146.2% → 11/13=84.6%)。
-    attended = sum(
-        1 for a in applicants
-        if a.get("status_participation") == "attended"
-        and (((a.get("schedule") or {}).get("start_datetime") or "")[:10] or "9999-12-31") <= target_str
-    )
+    attended_keys = {"all": 0, "organic": 0, "ad": 0}
+    booked_finished_keys = {"all": 0, "organic": 0, "ad": 0}
+
+    for a in applicants:
+        sched_dt = ((a.get("schedule") or {}).get("start_datetime") or "")[:10] or "9999-12-31"
+        status = a.get("status_participation")
+        attr = cache.get(a.get("id"), {}).get("attr", "unmatched")
+        if attr not in ("organic", "ad"):
+            attr = None
+
+        if status in ACTIVE_STATUSES and sched_dt <= target_str:
+            booked_finished_keys["all"] += 1
+            if attr:
+                booked_finished_keys[attr] += 1
+
+        if status == "attended" and sched_dt <= target_str:
+            attended_keys["all"] += 1
+            if attr:
+                attended_keys[attr] += 1
+
+    attended = attended_keys["all"]
+    booked_finished = booked_finished_keys["all"]
 
     no_slot_attended = sum(
         1 for a in applicants
@@ -257,8 +271,6 @@ def fetch_seminar_stats(key, event_project_id, target_date):
         if start:
             per_slot[start[:10]] = per_slot.get(start[:10], 0) + 1
 
-    booked_finished = sum(n for d, n in per_slot.items() if d <= target_str)
-
     if unmatched:
         print(f"  [info] 流入元を特定できなかった予約者: {unmatched}名 {unmatched_names}")
 
@@ -267,6 +279,8 @@ def fetch_seminar_stats(key, event_project_id, target_date):
         "booked_day": booked_day, "applied_day": applied_day,
         "attended": attended, "per_slot": per_slot,
         "booked_finished": booked_finished,
+        "attended_by_attr": attended_keys,
+        "booked_finished_by_attr": booked_finished_keys,
         "unmatched": unmatched,
     }
 
