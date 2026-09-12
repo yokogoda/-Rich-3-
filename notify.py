@@ -142,7 +142,7 @@ def build_report(m, target_date, stats, slot_status=None, key=None):
         f"　登録: {fmt_num(m['reg_all_day'])} / {fmt_num(m['reg_all_cum'])}（{fmt_rate(m['regrate_all'])}）"
     )
     lines.append(
-        "・オーガニック(SNS/メルマガ)"
+        "・オーガニック(SNS/メルマガ) "
         f"UU: {fmt_num(m['lp_uu_sem_day'])} / {fmt_num(m['lp_uu_sem_cum'])}"
         f"　登録: {fmt_num(m['reg_sem_day'])} / {fmt_num(m['reg_sem_cum'])}（{fmt_rate(m['regrate_sem'])}）"
     )
@@ -159,28 +159,20 @@ def build_report(m, target_date, stats, slot_status=None, key=None):
     def rate(n, d):
         return round(n / d, 4) if d else None
 
-    lines.append(f"・実予約数: {fmt_num(stats['booked_day'])} / {fmt_num(b['all'])}名")
-    lines.append(f"（登録者の {fmt_rate(rate(b['all'], m.get('reg_all_cum')))} が予約）")
-    lines.append(f"  ├ オーガニック経由: {b['organic']}名 ")
-    lines.append(f"（登録者の {fmt_rate(rate(b['organic'], m.get('reg_sem_cum')))}）")
-    lines.append(f"  └ 広告経由　　　  : {b['ad']}名 ")
-    lines.append(f"（登録者の {fmt_rate(rate(b['ad'], m.get('reg_ad_cum')))}）")
+    lines.append(f"・実予約数: {fmt_num(stats['booked_day'])} / {fmt_num(b['all'])}名（登録者の {fmt_rate(rate(b['all'], m.get('reg_all_cum')))} が予約）")
+    lines.append(f"  ├ オーガニック経由: {b['organic']}名（登録者の {fmt_rate(rate(b['organic'], m.get('reg_sem_cum')))}）")
+    lines.append(f"  └ 広告経由　　　  : {b['ad']}名（登録者の {fmt_rate(rate(b['ad'], m.get('reg_ad_cum')))}）")
     lines.append("")
-    lines.append(f"・キャンセル: 累計{c['all']}名"
-                 f"（オーガニック{c['organic']} / 広告{c['ad']}）")
-    lines.append(f"・申込ベース: 累計{a['all']}名"
-                 f"（オーガニック{a['organic']} / 広告{a['ad']}）")
+    lines.append(f"・キャンセル: 累計{c['all']}名（オーガニック{c['organic']} / 広告{c['ad']}）")
+    lines.append(f"・申込ベース: 累計{a['all']}名（オーガニック{a['organic']} / 広告{a['ad']}）")
     if stats.get("unmatched"):
         lines.append(f"※うち流入元を特定できなかった方 {stats['unmatched']}名は内訳に含みません")
     lines.append("")
 
     target_total = OPEN_SEMINAR_SLOTS * SEMINAR_CAPACITY
-    lines.append(f"・全体目標進捗: {fmt_num(b['all'])} / {target_total}名"
-                 f"（{fmt_rate(rate(b['all'], target_total))}）")
+    lines.append(f"・全体目標進捗: {fmt_num(b['all'])} / {target_total}名（{fmt_rate(rate(b['all'], target_total))}）")
     if stats.get("attended"):
-        lines.append(f"・参加数: 累計{stats['attended']}名"
-                     f"（開催済み{stats.get('booked_finished', 0)}名の "
-                     f"{fmt_rate(rate(stats['attended'], stats.get('booked_finished')))}）")
+        lines.append(f"・参加数: 累計{stats['attended']}名（開催済み{stats.get('booked_finished', 0)}名の {fmt_rate(rate(stats['attended'], stats.get('booked_finished')))}）")
 
     # 2. ウェビナー（9/12開始〜、または計測データが存在する場合に表示）
     if target_date >= WEBINAR_LP_COUNT_START or (isinstance(m.get("web_uu_all_cum"), (int, float)) and m["web_uu_all_cum"] > 0):
