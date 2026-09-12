@@ -134,9 +134,9 @@ def build_report(m, target_date, stats, slot_status=None, key=None):
 
     lines.append("")
 
-    # 1. ウェビナーLP流入・登録
+    # 1. ウェビナーLP訪問・登録
     if target_date >= WEBINAR_LP_COUNT_START or (isinstance(m.get("web_uu_all_cum"), (int, float)) and m["web_uu_all_cum"] > 0):
-        lines.append("■ ウェビナーLP流入・登録（前日/累計）")
+        lines.append("■ ウェビナーLP訪問・登録（前日/累計）")
         lines.append(
             f"・全体　　　UU: {fmt_num(m.get('web_uu_all_day'))} / {fmt_num(m.get('web_uu_all_cum'))}"
             f"　登録: {fmt_num(m.get('web_reg_all_day'))} / {fmt_num(m.get('web_reg_all_cum'))}（{fmt_rate(m.get('web_regrate_all'))}）"
