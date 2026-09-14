@@ -17,7 +17,7 @@ CONSULTATION_EVENT_ID = "YyESC92nIW9c"
 SHEET_ID = "1Bo6um_mJ1Eur87vUPEbEnCC5RtGaXyLKPDIHTMqHAAk"
 SHEET_TAB_NAME = "【事務局管理用】個別面談予約リスト"
 SHEET_TAB_GID = "1499419433"
-MANUAL_FILE_URL = "https://github.com/yokogoda/-Rich-3-/raw/main/docs/UTAGE_%E5%8F%82%E5%8A%A0%E7%8A%B6%E6%B3%81%E5%A4%89%E6%9B%B4%E3%83%9E%E3%83%8B%E3%83%A5%E3%82%A2%E3%83%AB.docx"
+MANUAL_FILE_URL = "https://drive.google.com/file/d/1MxRCz2d6pE1-e91Pb7Yl5L2NSepAhVuR/view"
 
 def format_meeting_id(url):
     m = re.search(r'/j/(\d+)', url)
@@ -183,8 +183,10 @@ def build_message(target_date, items):
         "・ステータス変更マニュアル▼",
         MANUAL_FILE_URL,
         "",
-        "個別相談予約2時間半後に、個別相談のThanks＋本講座案内は自動で届きます。",
-        "早めにご案内を送りたい場合は手動となりますのでCWからお知らせください。"
+        "個別相談終了後、ステータスを「参加済み」に変更し、①Thanks+②本講座申込みは手動でお送りください。",
+        "ステータスを変更することで、翌日9時にステップ配信が自動で流れます。",
+        "",
+        "ご不明点があればCWからお知らせください。"
     ])
 
     return "\n".join(lines)
