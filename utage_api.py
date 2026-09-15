@@ -14,6 +14,7 @@ from config import (
     ACTIVE_STATUSES,
     ATTR_CACHE_PATH,
     CONFIG_DIR,
+    CONSULTATION_EVENT_ID,
     COURSE_LIST_COLUMNS,
     COURSE_LIST_HEADER_ROW,
     COURSE_LIST_SHEET_NAME,
@@ -429,6 +430,21 @@ def count_course_contracts(target_date):
     return cum, day, amount_cum, amount_day, warns
 
 
+def count_consultation_attendees(key, target_date):
+    """個別相談の参加者数。対象日までに開催された枠で「参加済」の人をメールで名寄せして数える(テストモードは除く)。
+    セミナーの参加数と同じく attended だけを数える。本番モノリスにも同じロジックがある。"""
+    target_str = target_date.isoformat()
+    people = set()
+    for a in fetch_seminar_applicants(key, CONSULTATION_EVENT_ID):
+        if a.get("status_participation") != "attended" or a.get("is_test_mode"):
+            continue
+        start = ((a.get("schedule") or {}).get("start_datetime") or "")[:10]
+        if not start or start > target_str:
+            continue
+        people.add((a.get("mail") or "").strip().lower() or a.get("id"))
+    return len(people)
+
+
 def fetch_metrics(key, target_date):
     date_from = PROMO_START.isoformat()
     date_to = target_date.isoformat()
@@ -556,7 +572,9 @@ def fetch_metrics(key, target_date):
     m["regrate_sem"] = rate(m["reg_sem_cum"], m["lp_uu_sem_cum"])
     m["regrate_ad"] = rate(m["reg_ad_cum"], m["lp_uu_ad_cum"])
     m["sem_rate"] = rate(m["sem_cum"], m["reg_all_cum"])
-    m["sale_rate"] = rate(m["sale_cum"], m["apply_cum"])
+    # 成約率＝成約数÷個別相談の参加者数(2026-09-15 ユーザー指定。以前は÷申込数で、成約1・申込1の時点で100%になっていた)
+    m["consult_attended_cum"] = count_consultation_attendees(key, target_date)
+    m["sale_rate"] = rate(m["sale_cum"], m["consult_attended_cum"])
     m["web_regrate_all"] = rate(m["web_reg_all_cum"], m["web_uu_all_cum"])
     m["web_regrate_org"] = rate(m["web_reg_org_cum"], m["web_uu_org_cum"])
     m["web_regrate_ad"] = rate(m["web_reg_ad_cum"], m["web_uu_ad_cum"])
