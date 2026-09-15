@@ -14,6 +14,10 @@ from config import (
     ACTIVE_STATUSES,
     ATTR_CACHE_PATH,
     CONFIG_DIR,
+    COURSE_LIST_COLUMNS,
+    COURSE_LIST_HEADER_ROW,
+    COURSE_LIST_SHEET_NAME,
+    COURSE_PRICES,
     LINE_ACCOUNT_ID,
     LP_FUNNEL,
     LP_PAGE_AD_IDS,
@@ -27,6 +31,8 @@ from config import (
     SEM_LP_COUNT_START,
     SEM_STEP_INDIVIDUAL,
     SEM_STEP_SEMINAR,
+    SERVICE_ACCOUNT_PATH,
+    SPREADSHEET_ID,
     TEST_MAIL_LOCALPARTS,
     WEBINAR_AD_PAGE_IDS,
     WEBINAR_FUNNEL,
@@ -348,6 +354,81 @@ def count_course_applications(key, target_date):
     return len(first), sum(1 for d in first.values() if d == target_str), warns
 
 
+_course_list_cache = None
+
+
+def load_course_list_rows():
+    """事務局リストを見出し行から読む。1実行で何日分集計してもシートの読み取りは1回。"""
+    global _course_list_cache
+    if _course_list_cache is None:
+        import gspread
+        from sheets_client import with_retry
+        gc = with_retry(lambda: gspread.service_account(filename=SERVICE_ACCOUNT_PATH))
+        ws = with_retry(lambda: gc.open_by_key(SPREADSHEET_ID).worksheet(COURSE_LIST_SHEET_NAME))
+        _course_list_cache = with_retry(lambda: ws.get(
+            f"A{COURSE_LIST_HEADER_ROW}:U",
+            value_render_option="UNFORMATTED_VALUE",
+            date_time_render_option="FORMATTED_STRING"))
+    return _course_list_cache
+
+
+def parse_sheet_date(v):
+    if isinstance(v, (int, float)) and not isinstance(v, bool) and v > 0:
+        return datetime.date(1899, 12, 30) + datetime.timedelta(days=int(v))
+    parts = str(v or "").strip().split(" ")[0].replace("-", "/").split("/")
+    if len(parts) == 3 and all(p.isdigit() for p in parts) and len(parts[0]) == 4:
+        try:
+            return datetime.date(int(parts[0]), int(parts[1]), int(parts[2]))
+        except ValueError:
+            return None
+    return None  # 読めない形式(「9/12」「月/日/年」等)は呼び出し側で警告を出す
+
+
+def count_course_contracts(target_date):
+    """本講座の(成約累計, 成約日別, 売上累計, 売上日別, 警告)。事務局リストの決済完了チェックと決済完了日で数える。
+    本番モノリス(~/.config/utage-pdca/sync_daily.py)と同じロジック。変えるときは両方を同時に直すこと。"""
+    rows = load_course_list_rows()
+    header = rows[0] if rows else []
+
+    def idx(key_name):
+        return ord(COURSE_LIST_COLUMNS[key_name][0]) - ord("A")
+
+    for key_name, (letter, label) in COURSE_LIST_COLUMNS.items():
+        actual = str(header[idx(key_name)]).strip() if idx(key_name) < len(header) else ""
+        if not actual.startswith(label):
+            raise RuntimeError(f"{COURSE_LIST_SHEET_NAME}の{letter}{COURSE_LIST_HEADER_ROW}が「{label}」ではありません"
+                               f"(実際={actual!r})。列がずれているため成約を数えられません")
+
+    def cell(r, key_name):
+        return r[idx(key_name)] if idx(key_name) < len(r) else ""
+
+    def checked(v):
+        return v is True or str(v).strip().upper() == "TRUE"
+
+    cum = day = amount_cum = amount_day = 0
+    warns = []
+    for row_num, r in enumerate(rows[1:], start=COURSE_LIST_HEADER_ROW + 1):
+        if not checked(cell(r, "paid")) or checked(cell(r, "cancel")):
+            continue
+        name = cell(r, "name")
+        d = parse_sheet_date(cell(r, "paid_date"))
+        if d is None:
+            warns.append(f"{COURSE_LIST_SHEET_NAME} {row_num}行目({name})は決済完了なのに決済完了日が空か読めません。成約に入れていません")
+            continue
+        if d > target_date:
+            continue
+        price = next((p for word, p in COURSE_PRICES if word in str(cell(r, "course"))), None)
+        if price is None:
+            warns.append(f"{COURSE_LIST_SHEET_NAME} {row_num}行目({name})のコース「{cell(r, 'course')}」の定価が分かりません。成約には入れ、売上は0円にしました")
+            price = 0
+        cum += 1
+        amount_cum += price
+        if d == target_date:
+            day += 1
+            amount_day += price
+    return cum, day, amount_cum, amount_day, warns
+
+
 def fetch_metrics(key, target_date):
     date_from = PROMO_START.isoformat()
     date_to = target_date.isoformat()
@@ -449,8 +530,13 @@ def fetch_metrics(key, target_date):
     m["sem_cum"] = cum(sem_page, "registration_count"); m["sem_day"] = day(sem_page, "registration_count")
     m["ind_cum"] = cum(ind_page, "registration_count"); m["ind_day"] = day(ind_page, "registration_count")
     m["apply_cum"], m["apply_day"], pay_warnings = count_course_applications(key, target_date)
-    m["sale_cum"] = sum_cum(sale_pages, "sale_count"); m["sale_day"] = sum_day(sale_pages, "sale_count")
-    m["amount_cum"] = sum_cum(sale_pages, "sale_amount"); m["amount_day"] = sum_day(sale_pages, "sale_amount")
+    m["sale_cum"], m["sale_day"], m["amount_cum"], m["amount_day"], contract_warnings = count_course_contracts(target_date)
+    pay_warnings.extend(contract_warnings)
+    # UTAGEで決済があったのに、その日を決済完了日にした成約が足りなければ知らせる
+    utage_sale_day = sum_day(sale_pages, "sale_count")
+    if utage_sale_day > m["sale_day"]:
+        pay_warnings.append(f"{target_str} UTAGEで決済が{utage_sale_day}件ありますが、事務局リストで決済完了日がこの日の成約は{m['sale_day']}件です。"
+                            f"決済完了チェック・決済完了日の入れ漏れか、分割2回目以降の決済でないか確認してください")
     # 一覧に無いステップで成約が出たら知らせる(一覧から漏れると売上が黙って0になるため)
     for step in pay_data.get("data", []):
         n = sum(p.get("totals", {}).get("sale_count", 0) for p in step.get("pages", []))

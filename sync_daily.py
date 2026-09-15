@@ -156,6 +156,15 @@ def main():
     elif target_status == "up_to_date":
         lines.append(f"✅ データは最新です（前日 {target_date.isoformat()} まで確認済み）")
 
+    # 集計中に出た警告(本講座の決済完了日の入れ漏れ等)と累計の減少を、画面だけでなく通知にも載せる
+    warnings_out = list(m_target.get("_warnings", []))
+    if not args.dry_run:
+        warnings_out += decreased_warnings
+    if warnings_out:
+        lines.append("\n⚠️ 要確認:")
+        for w in warnings_out:
+            lines.append(f"  - {w}")
+
     if failed:
         lines.append("\n❌ 失敗:")
         for item, err in failed:
