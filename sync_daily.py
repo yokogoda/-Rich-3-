@@ -31,7 +31,7 @@ from sheets_client import (
     write_date,
     write_summary,
 )
-from utage_api import fetch_metrics, fetch_seminar_stats
+from utage_api import apply_webinar_metrics, fetch_metrics, fetch_seminar_stats
 
 
 def find_unfilled_dates(ws, start_date, target_date):
@@ -100,6 +100,8 @@ def main():
             for d in unfilled_dates:
                 print(f"--- 過去日 {d} の穴埋め処理開始 ---")
                 m_back = fetch_metrics(key, d)
+                # 過去日なのでラベル由来(視聴状況)は付かない。予約数だけ入る
+                apply_webinar_metrics(m_back, key, d)
                 stats_back = fetch_seminar_stats(key, SEM_EVENT_PROJECT_ID, d)
                 if not args.dry_run:
                     write_date(ws, m_back, d, stats_back)
@@ -107,6 +109,8 @@ def main():
 
     print(f"--- 当日処理対象 {target_date} ---")
     m_target = fetch_metrics(key, target_date)
+    # dry-runはシートに書かないので、翌朝入る視聴状況も先に見られるようにする
+    apply_webinar_metrics(m_target, key, target_date, force_labels=args.dry_run)
     stats_target = fetch_seminar_stats(key, SEM_EVENT_PROJECT_ID, target_date)
 
     target_status = "filled"

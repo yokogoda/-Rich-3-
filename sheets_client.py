@@ -170,9 +170,10 @@ def write_date(ws, m, target_date, stats=None):
             print(f"  [warn] {target_date} {key_name}: 前日({prev_val})の8倍以上に急増({new_val}) 要確認")
 
     # ★このコードが値を持たない行は、空欄で潰さず「今そこにある値」を書き戻す。
-    #   行32〜41(ウェビナー予約数・視聴状況)はこのリポジトリでは一切計算していないので、
-    #   もう一方のMacが書いた値をここで消してしまうと、ラベル由来の視聴状況7項目は
-    #   「対象日＝前日の日にしか書けない」性質上、永久に戻らない。
+    #   代表例は行35〜41(ウェビナー視聴状況)。「対象日＝前日」の実行でしか計算しないので、
+    #   バックフィルや再実行のときはキーが無い。ここで空欄にすると、前日に書いた値は
+    #   ラベル由来の性質上もう二度と取り直せない。
+    #   (移植前はこのリポジトリが行32〜41を一切計算しておらず、もう一方のMacの値を毎朝消していた)
     #   旧実装は cell_updates に無い行へ無条件に "" を入れていた
     #   (元の値を残すつもりの if が空文字を代入していて機能していなかった / 2026-09-15修正)。
     own_vals = read_column(ws, col, start_row=row_first, end_row=row_last, raw=True)
@@ -229,7 +230,6 @@ def write_summary(ws, m, target_date, stats=None):
     # 旧ラベル「LP:〜」はセミナーLPのことでしたが、ウェビナーLPと紛らわしいので
     # 「セミナーLP:〜」へ改名し、指標名の重複(LP登録数→登録数)も外しました。
     # ★古いラベルのままだと該当列が見つからず、その指標だけ更新されません(warnは出ます)。
-    # 「ウェビナー:予約数/予約率/視聴開始/視聴完了/視聴完了率」の5つは夏菜側が書きます。
     summary_by_label = {
         "セミナーLP:PV": m.get("lp_pv_all_cum"), "セミナーLP:UU": m.get("lp_uu_all_cum"),
         "セミナーLP:登録数": m.get("reg_all_cum"), "セミナーLP:登録率": m.get("regrate_all"),
@@ -251,6 +251,17 @@ def write_summary(ws, m, target_date, stats=None):
 
     if stats:
         summary_by_label["セミナー:キャンセル数"] = stats["cancelled"]["all"]
+
+    # ウェビナーの予約・視聴(2026-09-15に本番から移植)。
+    # まだ集計開始日に達していない日や、ラベル由来を書かない実行(対象日が前日でない)では
+    # m にキーが無いので、あるものだけ書く。無いものを書くとサマリーが空欄で消える。
+    for label, key in [("ウェビナー:予約数", "web_book_cum"),
+                       ("ウェビナー:予約率", "web_bookrate"),
+                       ("ウェビナー:視聴開始", "web_lab_start"),
+                       ("ウェビナー:視聴完了", "web_lab_done"),
+                       ("ウェビナー:視聴完了率", "web_donerate")]:
+        if key in m:
+            summary_by_label[label] = m[key]
 
     updates = []
     missing = []

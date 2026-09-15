@@ -27,8 +27,11 @@ from config import (
     SEM_STEP_INDIVIDUAL,
     SEM_STEP_SEMINAR,
     WEBINAR_AD_PAGE_IDS,
+    WEBINAR_FUNNEL,
+    WEBINAR_LABELS,
     WEBINAR_LP_COUNT_START,
     WEBINAR_LP_PAGE_IDS,
+    WEBINAR_RESERVE_PAGE_ID,
 )
 
 
@@ -417,3 +420,157 @@ def fetch_metrics(key, target_date):
     m["web_regrate_ad"] = rate(m["web_reg_ad_cum"], m["web_uu_ad_cum"])
 
     return m
+
+
+# ---------------------------------------------------------------------------
+# ウェビナー予約・視聴（2026-09-15に本番モノリス ~/.config/utage-pdca/sync_daily.py から移植）
+#
+# 移植前は岡安のMacの本番コードにしか無く、行32〜41は片方のMacだけが書く行だった。
+# ロジックは本番と1文字も変えていない。変えるときは両方を同時に直すこと。
+# ---------------------------------------------------------------------------
+
+def fetch_webinar_subscribers(key):
+    """ウェビナー予約ページ①の登録者を全件取得する(1予約1レコード)。"""
+    out, page = [], 1
+    while True:
+        data = utage_get(key, f"/funnels/{WEBINAR_FUNNEL}/subscribers",
+                         {"page_id": WEBINAR_RESERVE_PAGE_ID, "per_page": 100, "page": page})
+        rows = data.get("data", []) or []
+        out.extend(rows)
+        if len(rows) < 100:
+            return out
+        page += 1
+
+
+def fetch_label_readers(key, account_id, label_id):
+    """指定ラベルを持つ読者行を全件返す。
+
+    ★戻り値は「読者行」であって人数ではない。同じ人が複数シナリオに行を持つため、
+    meta.totalをそのまま使うと実測で3〜11倍に膨らむ。common_reader_idで名寄せすること。
+    """
+    conditions = json.dumps(
+        [{"rules": [{"key": "label", "condition": "including", "value": [label_id]}]}],
+        ensure_ascii=False)
+    # utage_get はクエリをエスケープせずに連結するので、ここで encode しておく
+    encoded = urllib.parse.quote(conditions, safe="")
+    out, page = [], 1
+    while True:
+        data = utage_get(key, f"/accounts/{account_id}/readers",
+                         {"conditions": encoded, "per_page": 100, "page": page})
+        rows = data.get("data", []) or []
+        out.extend(rows)
+        if len(rows) < 100:
+            return out
+        page += 1
+
+
+def _reader_mails(reader):
+    mails = set()
+    for group in ("scenario_fields", "common_fields"):
+        v = (reader.get(group) or {}).get("mail")
+        if v:
+            mails.add(v.strip().lower())
+    return mails
+
+
+def fetch_webinar_stats(key, target_date, include_labels):
+    """ウェビナーの予約数(subscriber)と視聴状況(ラベル)を集計する。
+
+    ■ 予約数
+    予約ページ①のsubscriberを created_at で絞る。起点は WEBINAR_LP_COUNT_START。
+    同じ人が複数回予約することがあるのでメールで名寄せし、「初回予約日」でその人を数える。
+    こうすると日別を足し上げた数が累計とぴったり一致する。
+
+    ■ 視聴状況
+    ラベルは「今の状態」しか持たず日付で絞れない。そのまま数えると、掃除し忘れた
+    テスト読者が混ざる(2026-09-11に実際に「視聴済1人」が全部テストだった)。
+    そこで「対象期間に予約した人」に限定して数える。視聴できるのは予約した人だけなので
+    定義としても正しく、テストの取りこぼしも自動で落ちる。
+
+    include_labels が False のとき、視聴状況は集計しない(キー自体を返さない)。
+    """
+    subs = fetch_webinar_subscribers(key)
+
+    first_booked = {}   # mail -> 初回予約日
+    for s in subs:
+        mail = (s.get("mail") or "").strip().lower()
+        created = (s.get("created_at") or "")[:10]
+        if not mail or not created:
+            continue
+        try:
+            d = datetime.datetime.strptime(created, "%Y-%m-%d").date()
+        except ValueError:
+            continue
+        if d < WEBINAR_LP_COUNT_START or d > target_date:
+            continue
+        if mail not in first_booked or d < first_booked[mail]:
+            first_booked[mail] = d
+
+    out = {
+        "book_cum": len(first_booked),
+        "book_day": sum(1 for d in first_booked.values() if d == target_date),
+    }
+    if not include_labels:
+        return out
+
+    booked_mails = set(first_booked)
+    cid_mails = {}      # common_reader_id -> メール集合
+    label_cids = {}     # ラベル種別 -> common_reader_id集合
+    for name, label_id in WEBINAR_LABELS.items():
+        cids = set()
+        for r in fetch_label_readers(key, LINE_ACCOUNT_ID, label_id):
+            cid = r.get("common_reader_id") or r.get("id")
+            if not cid:
+                continue
+            cids.add(cid)
+            mails = _reader_mails(r)
+            if mails:
+                cid_mails.setdefault(cid, set()).update(mails)
+        label_cids[name] = cids
+
+    booked_cids = {cid for cid, mails in cid_mails.items() if mails & booked_mails}
+    for name, cids in label_cids.items():
+        out[f"lab_{name}"] = len(cids & booked_cids)
+    return out
+
+
+def apply_webinar_metrics(m, key, target_date, force_labels=False):
+    """ウェビナーの予約数・視聴状況を m に足す。書き込み系とdry-runの両方から呼ぶ。
+
+    ★ラベル由来(視聴開始/視聴完了/途中離脱/未視聴)は「今の状態」しか取れないため、
+      対象日が前日のときだけ書く。バックフィルで過去の列に書くと、例えば9/20に9/12の列を
+      埋め直したときに「9/20時点の視聴完了数」が9/12の列に入る(参加率のas-of漏れと同種の事故)。
+      subscriber由来の予約数は created_at で絞れるのでこの問題がなく、常に書いてよい。
+      force_labels はdry-run専用(シートに書かないので、翌朝出る値を先に見るために使う)。
+
+    ラベル由来のキーを m に入れなかった日は、sheets_client.write_date() が
+    その行の今の値を書き戻すので、前日に書いた視聴状況が空欄で消えることはない。
+    """
+    if target_date < WEBINAR_LP_COUNT_START:
+        return
+    is_yesterday = target_date == datetime.date.today() - datetime.timedelta(days=1)
+    include_labels = is_yesterday or force_labels
+    try:
+        w = fetch_webinar_stats(key, target_date, include_labels=include_labels)
+    except Exception as e:
+        print(f"  [warn] ウェビナー予約・視聴の集計に失敗。該当行は書きません: {e}")
+        return
+
+    m["web_book_cum"] = w["book_cum"]
+    m["web_book_day"] = w["book_day"]
+    m["web_bookrate"] = (round(w["book_cum"] / m["web_reg_all_cum"], 4)
+                         if m.get("web_reg_all_cum") else "")
+    if not include_labels:
+        print("  [info] 対象日が前日ではないため、ウェビナー視聴状況(ラベル由来)は書きません")
+        return
+
+    m["web_lab_apply"] = w["lab_apply"]
+    m["web_lab_start"] = w["lab_start"]
+    m["web_lab_done"] = w["lab_done"]
+    m["web_lab_dropout"] = w["lab_dropout"]
+    m["web_lab_noshow"] = w["lab_noshow"]
+    # 視聴率の分母は subscriber由来の予約実人数(行32)。ラベル「申込」(行35)ではない。
+    # 行35は「ラベルが取りこぼしていないか」を目視で検算するために並べてある。
+    denom = w["book_cum"]
+    m["web_startrate"] = round(w["lab_start"] / denom, 4) if denom else ""
+    m["web_donerate"] = round(w["lab_done"] / denom, 4) if denom else ""

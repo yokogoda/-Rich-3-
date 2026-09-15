@@ -37,6 +37,27 @@ WEBINAR_LP_COUNT_START = datetime.date(2026, 9, 11)
 WEBINAR_LP_PAGE_IDS = ["67GSIiohgEMV"]
 WEBINAR_AD_PAGE_IDS = ["mwGnEJqUeLXb"]
 
+# --- ウェビナー予約・視聴（2026-09-15に本番モノリスから移植） ---
+# それまでこの集計は岡安のMacの本番コードにしか無く、行32〜41は片方のMacだけが書く行だった。
+# その「片方にしか無い集計」が、もう一方の一括書き込みに毎朝消される事故の土台になった
+# (docs/2026-09-15_row-misalignment-incident.md)。両方のMacで同じ値を出すために移植した。
+#
+# 予約数はファネル統計のregistration_countでも同じ数になるが、統計は「数」しか返さない。
+# subscriber(登録者一覧)なら1予約1レコードで mail / created_at(予約日時) が取れるので、
+# 日別も名寄せもできる。
+WEBINAR_FUNNEL = "xhU4doUVOUdO"
+WEBINAR_RESERVE_PAGE_ID = "NIkTUqSO1PEO"  # ウェビナー予約ページ①(自動ウェビナー登録)
+# ※ページ②(事前アンケート j8ob3VPXDyBE)は予約後の追加入力なので予約数には数えない
+
+# 視聴状況はラベルでしか取れない(ファネル統計・subscriberのどちらにも無い)。
+WEBINAR_LABELS = {
+    "apply": "0NeXKxBvXvsX",     # ウェビナー申込
+    "start": "mjPcZ8FNcbCb",     # ウェビナー視聴開始
+    "done": "dMyK3qxyE0DY",      # ウェビナー視聴済
+    "dropout": "RMcHTMhlHMBF",   # ウェビナー途中離脱
+    "noshow": "7tW1zePF6R2O",    # ウェビナー未視聴
+}
+
 SEM_FUNNEL = "pcKWfTityvBy"
 SEM_STEP_SEMINAR = "aTaZ7RyW3wQg"
 SEM_STEP_INDIVIDUAL = "XvO0niPi1J0U"
@@ -63,7 +84,9 @@ SEMINAR_CAPACITY = 8
 #   列見出しの日付チェックも累計の減少チェックもこの種のズレは検知できないので、静かに壊れます。
 #
 # 行32〜41（ウェビナー予約数・視聴状況・視聴率）は2026-09-11に新設した行です。
-# 夏菜側の本番スクリプトが書き込みます。こちら側では値を作っていません。
+# 2026-09-15にこのリポジトリへ集計を移植したので、今は両方のMacが書きます
+# (utage_api.apply_webinar_metrics)。ただし行35〜41のラベル由来7項目は
+# 「対象日＝前日」の実行でしか書かないので、それ以外の実行では今の値を残します。
 #
 # ★2026-09-15訂正★ ここには元「ROWにキーはあっても書き込み対象になりません
 #   （cell_updatesはmにあるキーだけを拾うため）」と書いてありましたが誤りでした。
@@ -82,7 +105,7 @@ ROW = {
     "web_reg_all_cum": 23, "web_reg_org_cum": 24, "web_reg_ad_cum": 25,
     "web_reg_all_day": 26, "web_reg_org_day": 27, "web_reg_ad_day": 28,
     "web_regrate_all": 29, "web_regrate_org": 30, "web_regrate_ad": 31,
-    # ここから下は2026-09-11新設（夏菜側が書き込み）
+    # ここから下は2026-09-11新設（2026-09-15からこのリポジトリでも計算）
     "web_book_cum": 32, "web_book_day": 33, "web_bookrate": 34,
     "web_lab_apply": 35, "web_lab_start": 36, "web_lab_done": 37,
     "web_lab_dropout": 38, "web_lab_noshow": 39,
@@ -141,11 +164,14 @@ CUM_ROWS = [
     "sem_cum", "ind_cum", "apply_cum", "sale_cum", "amount_cum",
     "web_pv_all_cum", "web_uu_all_cum", "web_pv_org_cum", "web_uu_org_cum",
     "web_pv_ad_cum", "web_uu_ad_cum", "web_reg_all_cum", "web_reg_org_cum", "web_reg_ad_cum",
+    "web_book_cum",
 ]
+# ラベル由来(web_lab_*)はCUM_ROWSに入れない。
+# テスト読者を削除するとラベルごと消えて累計が正当に減るため、減少チェックが誤発報する。
 
 DAY_ROWS = [
     "lp_pv_all_day", "lp_uu_all_day", "reg_all_day", "sem_day", "ind_day",
-    "web_pv_all_day", "web_uu_all_day", "web_reg_all_day",
+    "web_pv_all_day", "web_uu_all_day", "web_reg_all_day", "web_book_day",
     "apply_day", "sale_day", "amount_day",
 ]
 
