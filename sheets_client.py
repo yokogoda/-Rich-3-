@@ -11,6 +11,7 @@ from config import (
     DAY_ROWS,
     OPEN_SEMINAR_SLOTS,
     ROW,
+    ROW_GROUP_LABELS,
     SEMINAR_CAPACITY,
     SHEET_DATE_ORIGIN,
 )
@@ -41,8 +42,15 @@ def date_to_col_idx0(d):
     return DATE_COL_START - 1 + (d - SHEET_DATE_ORIGIN).days
 
 
-def read_column(ws, col_name, start_row=1, end_row=100):
-    vals = with_retry(lambda: ws.get(f"{col_name}{start_row}:{col_name}{end_row}"))
+def read_column(ws, col_name, start_row=1, end_row=100, raw=False):
+    """1列をまとめて読み、{行番号: 値} で返す。
+
+    raw=True で書式を通さない生の値を返す(パーセントなら 0.5、金額なら 240000)。
+    書き戻す値を読むときは必ず raw=True にする。既定の整形済み文字列("50%"など)を
+    そのまま書き戻すと、RAW書き込みでは文字列として入って数式・集計が壊れる。
+    """
+    opts = {"value_render_option": "UNFORMATTED_VALUE"} if raw else {}
+    vals = with_retry(lambda: ws.get(f"{col_name}{start_row}:{col_name}{end_row}", **opts))
     out = {}
     for r_idx0, r in enumerate(vals):
         row_num = start_row + r_idx0
@@ -60,12 +68,52 @@ def batch_write_cells(ws, updates_dict):
     with_retry(lambda: ws.batch_update(data))
 
 
+def _normalize_label(s):
+    """折り返しセルは改行入りで返るので、空白と改行を落としてから比較する。"""
+    return "".join(str(s or "").split())
+
+
+def verify_row_alignment(ws):
+    """ROWの行番号がシート上の見出しと本当に対応しているかを確かめる。
+
+    ★これが無いと行ズレは一切検知できない。列見出し(9行目の日付)の一致も、
+      累計の逆行チェックも、行がまるごとズレた書き込みは素通りさせる。
+      2026-09-12〜14に実際に3日分の列が壊れたので追加した(2026-09-15)。
+      詳しい経緯は config.ROW_GROUP_LABELS のコメントを見ること。
+
+    不一致があれば RuntimeError を投げて書き込み自体を中止する。
+    「古いコードで書いて数字を壊す」より「書かずに止まる」方が損害が小さい。
+    ラベル由来のウェビナー視聴状況は後から埋め直せないため、壊す方が高くつく。
+    """
+    rows = sorted(ROW_GROUP_LABELS)
+    labels = read_column(ws, "B", start_row=rows[0], end_row=rows[-1])
+
+    mismatched = []
+    for row_num in rows:
+        actual = _normalize_label(labels.get(row_num, ""))
+        for expected in ROW_GROUP_LABELS[row_num]:
+            if _normalize_label(expected) not in actual:
+                mismatched.append(
+                    f"B{row_num}: 「{expected}」を含むはずが {actual or '(空欄)'!r}"
+                )
+                break
+
+    if mismatched:
+        raise RuntimeError(
+            "シートの行の並びがコードの想定と一致しません。書き込みを中止します。"
+            "（コードが古いか、シートの行が動かされています。"
+            "git pull して deploy.sh を実行し直してください）: "
+            + " / ".join(mismatched)
+        )
+
+
 def write_date(ws, m, target_date, stats=None):
     col_idx0 = date_to_col_idx0(target_date)
     col = col_letter(col_idx0)
 
     print(f"target_date={target_date} column={col}")
 
+    # 安全確認①: 列(9行目の日付)が合っているか
     expected_label = f"{target_date.month}/{target_date.day}"
     actual_label = with_retry(lambda: ws.acell(f"{col}9").value)
     if (actual_label or "").strip() != expected_label:
@@ -73,6 +121,9 @@ def write_date(ws, m, target_date, stats=None):
             f"列の見出しが想定と違います。書き込み中止。"
             f"想定列={col} 期待={expected_label} 実際={actual_label!r}"
         )
+
+    # 安全確認②: 行の並びが合っているか(①では行ズレを検知できない)
+    verify_row_alignment(ws)
 
     # ★行の範囲はROWから引く。数字を直書きすると、行を足したときに
     #   その行だけ無言で書かれなくなる(2026-09-11: 11〜63固定のままROWが73まで
@@ -118,13 +169,28 @@ def write_date(ws, m, target_date, stats=None):
         if isinstance(new_val, (int, float)) and new_val > 20 and prev_val > 0 and new_val > prev_val * 8:
             print(f"  [warn] {target_date} {key_name}: 前日({prev_val})の8倍以上に急増({new_val}) 要確認")
 
+    # ★このコードが値を持たない行は、空欄で潰さず「今そこにある値」を書き戻す。
+    #   行32〜41(ウェビナー予約数・視聴状況)はこのリポジトリでは一切計算していないので、
+    #   もう一方のMacが書いた値をここで消してしまうと、ラベル由来の視聴状況7項目は
+    #   「対象日＝前日の日にしか書けない」性質上、永久に戻らない。
+    #   旧実装は cell_updates に無い行へ無条件に "" を入れていた
+    #   (元の値を残すつもりの if が空文字を代入していて機能していなかった / 2026-09-15修正)。
+    own_vals = read_column(ws, col, start_row=row_first, end_row=row_last, raw=True)
+
     full_col = []
+    kept = []
     for r in range(row_first, row_last + 1):
-        val = cell_updates.get(r, "")
-        if val == "" and r in prev_vals:
-            val = ""
+        if r in cell_updates:
+            val = cell_updates[r]
+        else:
+            val = own_vals.get(r, "")
+            if str(val).strip() != "":
+                kept.append(r)
         print(f"  row{r:<2} {next((k for k, v in ROW.items() if v == r), ''):<18} = {val}")
         full_col.append([val])
+
+    if kept:
+        print(f"  このコードが値を持たない行は現状維持しました: {kept}")
 
     range_name = f"{col}{row_first}:{col}{row_last}"
     with_retry(lambda: ws.update(range_name=range_name, values=full_col))
