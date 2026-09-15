@@ -63,8 +63,28 @@ SEM_STEP_SEMINAR = "aTaZ7RyW3wQg"
 SEM_STEP_INDIVIDUAL = "XvO0niPi1J0U"
 
 PAY_FUNNEL = "rLlJKRapAlIl"
-PAY_STEP_APPLY = "Xph9Dysj7atc"
-PAY_STEP_SALE = "Xph9Dysj7atc"
+# 本講座申込数は「本講座申込みフォーム」(ステップHZa6G78keLQt)の登録者で数える(2026-09-15変更)。
+# 以前はファネル統計のregistration_countを使っており、テスト送信4件＋空レコード1件が
+# 9/12の申込5件としてそのまま載っていた。統計APIは読者を選べないので、登録者一覧から数える。
+PAY_APPLY_PAGE_ID = "2cxCP462CJWQ"
+# 成約数・売上は決済が起きるステップ全部の合計。1ステップだけ見ると、
+# 通常のコース選択か特別対応のどちらかの成約が0件になる(2026-09-15変更)。
+# ※統計APIの売上はテスト決済を除けない。テストで決済するときはここに載る点に注意
+PAY_SALE_STEP_IDS = [
+    "2qYpn8p3qjcf",  # コース選択ページ
+    "mOODkDVph0Uu",  # 【48万円】人生激変コース
+    "VyXmNXyiWzR1",  # 【68万円】覚醒大変身コース
+    "fnlCDwcgg2a0",  # 【98万円】10倍加速コース
+    "Xph9Dysj7atc",  # 特別対応：人生激変コース
+]
+# 申込フォームを通らずに決済した人を、特例として申込数に入れる(ページID → メール)。
+# 2026-09-15 ユーザー判断: 松田富子様(9/12 特別対応ページで決済)は今回だけ申込に数える。
+# 今後は申込フォームの登録者だけで数える方針なので、ここに人を足さないこと。
+PAY_APPLY_EXCEPTIONS = {
+    "Xj2KC4okqDYy": {"mel.matsu0410@gmail.com"},  # 特別対応：人生激変コース
+}
+# テスト送信として申込数から外すメール(「+」より前・「@」より前の部分で判定)。メールが空の登録も外す
+TEST_MAIL_LOCALPARTS = {"natsunairo22", "yokogoyoga"}
 
 SEM_EVENT_PROJECT_ID = "C0vOokE5slKi"
 CONSULTATION_EVENT_ID = "YyESC92nIW9c"

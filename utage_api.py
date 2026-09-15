@@ -18,14 +18,16 @@ from config import (
     LP_FUNNEL,
     LP_PAGE_AD_IDS,
     LP_PAGE_SEMINAR_IDS,
+    PAY_APPLY_EXCEPTIONS,
+    PAY_APPLY_PAGE_ID,
     PAY_FUNNEL,
-    PAY_STEP_APPLY,
-    PAY_STEP_SALE,
+    PAY_SALE_STEP_IDS,
     PROMO_START,
     SEM_FUNNEL,
     SEM_LP_COUNT_START,
     SEM_STEP_INDIVIDUAL,
     SEM_STEP_SEMINAR,
+    TEST_MAIL_LOCALPARTS,
     WEBINAR_AD_PAGE_IDS,
     WEBINAR_FUNNEL,
     WEBINAR_LABELS,
@@ -302,6 +304,50 @@ def daily_value(page_or_step, target_date_str, field):
     return 0
 
 
+def fetch_funnel_subscribers(key, funnel_id, page_id):
+    """ファネルの1ページの登録者を全件取得する。"""
+    out, page = [], 1
+    while True:
+        data = utage_get(key, f"/funnels/{funnel_id}/subscribers",
+                         {"page_id": page_id, "per_page": 100, "page": page})
+        rows = data.get("data", []) or []
+        out.extend(rows)
+        if len(rows) < 100:
+            return out
+        page += 1
+
+
+def is_test_mail(mail):
+    if not mail:
+        return True
+    return mail.split("@")[0].split("+")[0] in TEST_MAIL_LOCALPARTS
+
+
+def count_course_applications(key, target_date):
+    """本講座申込数(累計, 日別)。申込フォームの登録者＋特例の人を、メールで名寄せして初回登録日で数える。
+    本番モノリス(~/.config/utage-pdca/sync_daily.py)と同じロジック。変えるときは両方を同時に直すこと。"""
+    target_str = target_date.isoformat()
+    sources = [(PAY_APPLY_PAGE_ID, None)] + list(PAY_APPLY_EXCEPTIONS.items())
+    first = {}
+    blank_today = 0
+    for page_id, allowed in sources:
+        for r in fetch_funnel_subscribers(key, PAY_FUNNEL, page_id):
+            mail = (r.get("mail") or "").strip().lower()
+            d = (r.get("created_at") or "")[:10]
+            if allowed is None and not mail and d == target_str:
+                blank_today += 1
+            if is_test_mail(mail) or (allowed is not None and mail not in allowed):
+                continue
+            if not d or d < PROMO_START.isoformat() or d > target_str:
+                continue
+            if mail not in first or d < first[mail]:
+                first[mail] = d
+    warns = []
+    if blank_today:
+        warns.append(f"{target_str} 本講座申込フォームにメールが空の登録が{blank_today}件あり、申込数から外しました。本物の申込でないか確認してください")
+    return len(first), sum(1 for d in first.values() if d == target_str), warns
+
+
 def fetch_metrics(key, target_date):
     date_from = PROMO_START.isoformat()
     date_to = target_date.isoformat()
@@ -359,10 +405,9 @@ def fetch_metrics(key, target_date):
 
     pay_data = utage_get(key, f"/funnels/{PAY_FUNNEL}/stats/daily",
                          {"date_from": date_from, "date_to": date_to})
-    apply_step = find_step(pay_data, PAY_STEP_APPLY)
-    sale_step = find_step(pay_data, PAY_STEP_SALE)
-    apply_page = step_page(apply_step)
-    sale_page = step_page(sale_step)
+    sale_pages = [p for step in pay_data.get("data", [])
+                  if step.get("step_id") in PAY_SALE_STEP_IDS
+                  for p in step.get("pages", [])]
 
     def cum(page, field):
         return page["totals"].get(field, 0) if page else 0
@@ -403,9 +448,20 @@ def fetch_metrics(key, target_date):
 
     m["sem_cum"] = cum(sem_page, "registration_count"); m["sem_day"] = day(sem_page, "registration_count")
     m["ind_cum"] = cum(ind_page, "registration_count"); m["ind_day"] = day(ind_page, "registration_count")
-    m["apply_cum"] = cum(apply_page, "registration_count"); m["apply_day"] = day(apply_page, "registration_count")
-    m["sale_cum"] = cum(sale_page, "sale_count"); m["sale_day"] = day(sale_page, "sale_count")
-    m["amount_cum"] = cum(sale_page, "sale_amount"); m["amount_day"] = day(sale_page, "sale_amount")
+    m["apply_cum"], m["apply_day"], pay_warnings = count_course_applications(key, target_date)
+    m["sale_cum"] = sum_cum(sale_pages, "sale_count"); m["sale_day"] = sum_day(sale_pages, "sale_count")
+    m["amount_cum"] = sum_cum(sale_pages, "sale_amount"); m["amount_day"] = sum_day(sale_pages, "sale_amount")
+    # 一覧に無いステップで成約が出たら知らせる(一覧から漏れると売上が黙って0になるため)
+    for step in pay_data.get("data", []):
+        n = sum(p.get("totals", {}).get("sale_count", 0) for p in step.get("pages", []))
+        if n and step.get("step_id") not in PAY_SALE_STEP_IDS:
+            pay_warnings.append(f"PAY_SALE_STEP_IDSに無い「{step.get('step_name')}」({step.get('step_id')})で成約{n}件。成約・売上に入っていません")
+    # 成約が申込を上回るのは、申込フォームを通らない決済が出たとき(9/12の松田様と同じ形)
+    if m["sale_cum"] > m["apply_cum"]:
+        pay_warnings.append(f"本講座の成約{m['sale_cum']}件が申込{m['apply_cum']}名を上回っています。申込フォームを通らない決済が無いか確認してください")
+    for w in pay_warnings:
+        print(f"  [warn] {w}")
+    m["_warnings"] = pay_warnings
 
     def rate(n, d):
         return round(n / d, 4) if d else ""
