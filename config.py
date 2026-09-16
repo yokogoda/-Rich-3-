@@ -7,6 +7,8 @@ import os
 
 CONFIG_DIR = os.path.expanduser("~/.config/utage-pdca")
 ATTR_CACHE_PATH = os.path.join(CONFIG_DIR, "seminar_applicant_attributions.json")
+# ウェビナー予約者の流入元(広告/ハウス)。ファーストタッチなので一度決めたら変えない
+WEBINAR_ATTR_CACHE_PATH = os.path.join(CONFIG_DIR, "webinar_booking_attributions.json")
 LAST_RUN_OK_PATH = os.path.join(CONFIG_DIR, "last_run_ok_date.txt")
 
 SPREADSHEET_ID = "1Bo6um_mJ1Eur87vUPEbEnCC5RtGaXyLKPDIHTMqHAAk"

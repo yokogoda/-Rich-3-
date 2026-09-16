@@ -36,6 +36,7 @@ from config import (
     SPREADSHEET_ID,
     TEST_MAIL_LOCALPARTS,
     WEBINAR_AD_PAGE_IDS,
+    WEBINAR_ATTR_CACHE_PATH,
     WEBINAR_FUNNEL,
     WEBINAR_LABELS,
     WEBINAR_LP_COUNT_START,
@@ -602,6 +603,115 @@ def fetch_webinar_subscribers(key):
         page += 1
 
 
+def fetch_readers_by_mail(key, account_id, mail):
+    """メールアドレスで読者行を引く。読者項目(mail)は絞り込みキーとして使える。
+
+    読者一覧を全件取るのは4,400行=45リクエストで、60回/分の制限に当たりやすい。
+    予約者は1日数人なので、1人1リクエストで引いたほうが桁違いに軽い。
+    """
+    conditions = json.dumps(
+        [{"rules": [{"key": "mail", "condition": "equal", "value": mail}]}], ensure_ascii=False)
+    encoded = urllib.parse.quote(conditions, safe="")
+    out, page = [], 1
+    while True:
+        data = utage_get(key, f"/accounts/{account_id}/readers",
+                         {"conditions": encoded, "per_page": 100, "page": page})
+        rows = data.get("data", []) or []
+        out.extend(rows)
+        if len(rows) < 100:
+            return out
+        page += 1
+
+
+# ウェビナー予約者の流入元。(区分, LPページIDの並び)を「最初に登録した順」で見る。
+WEBINAR_BOOK_SOURCES = [
+    ("ad_web", WEBINAR_AD_PAGE_IDS),    # 今回のウェビナー広告LP
+    ("org_web", WEBINAR_LP_PAGE_IDS),   # ウェビナーLP(オーガニック)
+    ("ad_sem", LP_PAGE_AD_IDS),         # セミナー期の広告LP
+    ("org_sem", LP_PAGE_SEMINAR_IDS),   # セミナー期のオーガニックLP
+]
+
+
+def classify_webinar_bookings(key, mails):
+    """ウェビナー予約者を流入元(広告/ハウス)へ振り分ける。戻り値は mail -> 区分。
+
+    ■ なぜ突合が要るか
+    予約ページ①のsubscriberは mail しか持たず(line_picture_urlは全件null)、
+    LPのsubscriberは逆に mail も name もnullでLINEの picture_url しか持たない。
+    共通の項目が1つも無いので直接は結合できない。読者を仲介にして繋ぐ:
+
+        予約(mail) → 読者行 → line_picture_url → LP登録(line_picture_url) → ページID
+
+    判定は必ず**ページID**で行う。UTMは正常な登録でも6%程度欠落するため使わない
+    (2026-08-30にユーザーと合意)。
+
+    ■ 2通りで突き合わせる(穴が互い違いなので両方使うと塞がる。2026-09-16実測)
+      A アイコンURL一致 … LP登録側にURLが無い5件を落とす
+      B 登録時刻の秒一致 … 既にそのシナリオに居ると読者行が作られないため3件を落とす
+    広告判定はA・Bのどちらでも同じ結果になることを18人で確認済み。
+
+    ■ ファーストタッチなので一度決めたら変えない
+    判定結果は WEBINAR_ATTR_CACHE_PATH に貯め、次回以降は再計算しない。
+    後から広告LPに登録し直した人が広告に化けるのを防ぐためでもある。
+    """
+    cache = {}
+    if os.path.exists(WEBINAR_ATTR_CACHE_PATH):
+        try:
+            with open(WEBINAR_ATTR_CACHE_PATH, encoding="utf-8") as f:
+                cache = json.load(f)
+        except Exception as e:
+            print(f"  [warn] {WEBINAR_ATTR_CACHE_PATH} を読めませんでした(作り直します): {e}")
+
+    # web_lp を持たない古い形式のキャッシュは作り直す(2026-09-16に項目を追加した)
+    todo = [m for m in mails if m not in cache or "web_lp" not in cache[m]]
+    if todo:
+        lp_rows = []   # (登録日時, 区分, アイコンURL, LINE表示名)
+        for kind, page_ids in WEBINAR_BOOK_SOURCES:
+            for s in fetch_lp_registrants(key, LP_FUNNEL, page_ids):
+                lp_rows.append((s.get("created_at") or "", kind,
+                                s.get("line_picture_url"), (s.get("line_display_name") or "").strip()))
+
+        for mail in todo:
+            rows = fetch_readers_by_mail(key, LINE_ACCOUNT_ID, mail)
+            pics = {r["line_picture_url"] for r in rows if r.get("line_picture_url")}
+            times = {r.get("created_at") for r in rows if r.get("created_at")}
+            names = {(r.get("line_display_name") or "").strip() for r in rows} - {""}
+            hits = []
+            for created, kind, pic, dn in lp_rows:
+                if pic and pic in pics:
+                    hits.append((created, kind, "pic"))
+                elif created in times and dn and dn in names:
+                    hits.append((created, kind, "time"))
+            hits.sort()
+            # ★attr(内訳用)と web_lp(予約率用)は別物★
+            #   attr はファーストタッチ＝最初に登録したLP。広告費で獲得した人かどうかを見る。
+            #   web_lp は「ウェビナーLPに登録したか」で、順番を問わない。
+            #   宮下様のように、先にセミナーLP・後からウェビナーLPへ登録した人がいる。
+            #   予約率の分母(ウェビナーLP登録数)にはこの方も入っているので、
+            #   ファーストタッチで分子を作ると母集団がずれて率が過小になる。
+            web_lp = ""
+            for _created, kind, _how in hits:
+                if kind == "ad_web":
+                    web_lp = "ad"
+                    break
+                if kind == "org_web" and not web_lp:
+                    web_lp = "org"
+            cache[mail] = {
+                "attr": hits[0][1] if hits else "house",
+                "how": hits[0][2] if hits else "none",
+                "lp_at": hits[0][0] if hits else "",
+                "web_lp": web_lp,
+                "decided_at": datetime.datetime.now().isoformat(timespec="seconds"),
+            }
+            print(f"  [attr] {mail}: {cache[mail]['attr']} ({cache[mail]['how']}) webLP={web_lp or 'なし'}")
+
+        os.makedirs(CONFIG_DIR, exist_ok=True)
+        with open(WEBINAR_ATTR_CACHE_PATH, "w", encoding="utf-8") as f:
+            json.dump(cache, f, ensure_ascii=False, indent=2)
+
+    return {m: cache[m] for m in mails}
+
+
 def fetch_label_readers(key, account_id, label_id):
     """指定ラベルを持つ読者行を全件返す。
 
@@ -670,6 +780,26 @@ def fetch_webinar_stats(key, target_date, include_labels):
         "book_cum": len(first_booked),
         "book_day": sum(1 for d in first_booked.values() if d == target_date),
     }
+
+    # 流入元の内訳。予約数は「LPを通らずB2やリッチメニューから直接予約した人」も含むので、
+    # ウェビナーLPの登録内訳(行24/25)では代用できない。実測ではLP経由は予約の1/3しかいない。
+    try:
+        attrs = classify_webinar_bookings(key, sorted(first_booked))
+    except Exception as e:
+        print(f"  [warn] ウェビナー予約の流入元判定に失敗。内訳は出しません: {e}")
+    else:
+        n = {k: 0 for k in ("ad_web", "ad_sem", "org_web", "org_sem", "house")}
+        for rec in attrs.values():
+            n[rec["attr"]] = n.get(rec["attr"], 0) + 1
+        out["book_ad_web"] = n["ad_web"]
+        out["book_ad_sem"] = n["ad_sem"]
+        # ハウス＝広告以外。オーガニックLP経由もLP未経由の既存読者もここに入る
+        out["book_house"] = n["org_web"] + n["org_sem"] + n["house"]
+        # 予約率の分子は「ウェビナーLPに登録した予約者」。分母(LP登録数)と母集団を揃える。
+        # 旧: 予約総数 ÷ LP登録数 … 分子にLP非経由の予約が入っていて100%を超えうる率だった
+        out["book_lp"] = sum(1 for rec in attrs.values() if rec.get("web_lp"))
+        out["book_lp_ad"] = sum(1 for rec in attrs.values() if rec.get("web_lp") == "ad")
+
     if not include_labels:
         return out
 
@@ -718,8 +848,17 @@ def apply_webinar_metrics(m, key, target_date, force_labels=False):
 
     m["web_book_cum"] = w["book_cum"]
     m["web_book_day"] = w["book_day"]
-    m["web_bookrate"] = (round(w["book_cum"] / m["web_reg_all_cum"], 4)
-                         if m.get("web_reg_all_cum") else "")
+    # 内訳はサマリー(行5〜7)だけに出す。ROWに無いキーなので日別の行には書かれない
+    for key_name in ("book_ad_web", "book_ad_sem", "book_house", "book_lp", "book_lp_ad"):
+        if key_name in w:
+            m["web_" + key_name] = w[key_name]
+    # 予約率は「LP経由の予約 ÷ LP登録」。分子と分母の母集団を揃える(2026-09-16修正)
+    if "book_lp" in w and m.get("web_reg_all_cum"):
+        m["web_bookrate"] = round(w["book_lp"] / m["web_reg_all_cum"], 4)
+    else:
+        m["web_bookrate"] = ""
+    if "book_lp_ad" in w and m.get("web_reg_ad_cum"):
+        m["web_bookrate_ad"] = round(w["book_lp_ad"] / m["web_reg_ad_cum"], 4)
     if not include_labels:
         print("  [info] 対象日が前日ではないため、ウェビナー視聴状況(ラベル由来)は書きません")
         return

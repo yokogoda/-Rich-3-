@@ -172,11 +172,30 @@ def build_report(m, target_date, stats, slot_status=None, key=None):
 
     # 3. ウェビナー予約
     if target_date >= WEBINAR_LP_COUNT_START or (isinstance(m.get("web_reg_all_cum"), (int, float)) and m["web_reg_all_cum"] > 0):
+        # 【2026-09-16修正】ここは web_reg_*(＝ウェビナーLPの登録数)を「実予約数」として
+        # 出していた。LP登録と予約は別物で、実測では予約の2/3はLPを通らずステップ配信や
+        # リッチメニューから直接入る。9/15のレポートは予約16名に対し17名(=LP登録)と出ていた。
         lines.append("■ ウェビナー予約（前日/累計）")
-        lines.append(f"・実予約数: {fmt_num(m.get('web_reg_all_day'))} / {fmt_num(m.get('web_reg_all_cum'))}名")
-        lines.append(f"  ├ オーガニック経由: {fmt_num(m.get('web_reg_org_cum'))}名")
-        lines.append(f"  └ 広告経由　　　  : {fmt_num(m.get('web_reg_ad_cum'))}名")
+        lines.append(f"・実予約数: {fmt_num(m.get('web_book_day'))} / {fmt_num(m.get('web_book_cum'))}名")
+        if "web_book_house" in m:
+            ad_web = m.get("web_book_ad_web") or 0
+            ad_sem = m.get("web_book_ad_sem") or 0
+            lines.append(
+                f"  ├ 広告経由　　　  : {fmt_num(ad_web + ad_sem)}名"
+                f"（ウェビナー広告LP {fmt_num(ad_web)} / セミナー期の広告LP {fmt_num(ad_sem)}）")
+            lines.append(f"  └ ハウスリスト等  : {fmt_num(m.get('web_book_house'))}名")
+        if m.get("web_bookrate_ad") not in (None, ""):
+            lines.append(f"・広告LP登録者の予約率: {fmt_rate(m.get('web_bookrate_ad'))}"
+                         f"（登録 {fmt_num(m.get('web_reg_ad_cum'))}名 → 予約 {fmt_num(m.get('web_book_lp_ad'))}名）")
         lines.append("")
+
+        if "web_lab_start" in m:
+            lines.append("■ ウェビナー視聴（累計）")
+            lines.append(f"・視聴開始: {fmt_num(m.get('web_lab_start'))}名（予約者の {fmt_rate(m.get('web_startrate'))}）")
+            lines.append(f"・視聴完了: {fmt_num(m.get('web_lab_done'))}名（予約者の {fmt_rate(m.get('web_donerate'))}）")
+            lines.append(f"  ├ 途中離脱: {fmt_num(m.get('web_lab_dropout'))}名")
+            lines.append(f"  └ 未視聴　: {fmt_num(m.get('web_lab_noshow'))}名")
+            lines.append("")
 
     # 4. セミナー予約
     lines.append("■ セミナー予約（前日/累計）※キャンセル除外・日程変更は1名1件")
